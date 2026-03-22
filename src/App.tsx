@@ -1,0 +1,103 @@
+import { useState } from 'react';
+import { motion } from 'motion/react';
+import { LayoutDashboard } from 'lucide-react';
+import { AuthGate } from './components/AuthGate';
+import { Header } from './components/Header';
+import { Studio } from './components/Studio';
+import { AdminDashboard } from './components/AdminDashboard';
+import { useAuth, signOut } from './lib/useAuth';
+
+type View = 'studio' | 'admin' | 'subscription';
+
+export default function App() {
+  const { user, loading } = useAuth();
+  const [view, setView] = useState<View>('studio');
+
+  // Lê role diretamente do app_metadata do JWT — sem query ao banco
+  const isAdmin = user?.app_metadata?.role === 'admin';
+
+  const handleLogout = async () => {
+    await signOut();
+    setView('studio');
+  };
+
+  // Carregando sessão Supabase
+  if (loading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-offwhite">
+        <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Não autenticado
+  if (!user) {
+    return <AuthGate onSuccess={() => {}} />;
+  }
+
+  // Painel admin
+  if (view === 'admin' && isAdmin) {
+    return <AdminDashboard onExit={() => setView('studio')} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-offwhite">
+      <Header
+        isAdmin={isAdmin}
+        onAdminClick={() => setView('admin')}
+        onLogout={handleLogout}
+        onSubscriptionClick={() => setView('subscription')}
+        onStudioClick={() => setView('studio')}
+        currentView={view}
+      />
+
+      {view === 'studio' ? <Studio /> : <Studio forcedStep="subscription" />}
+
+      {/* Botão flutuante Admin — visível só para administradores */}
+      {isAdmin && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setView('admin')}
+          className="fixed bottom-8 right-8 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl gold-gradient text-white shadow-xl shadow-gold/30 hover:shadow-gold/50 transition-shadow"
+          title="Painel Administrativo"
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          <span className="text-xs font-black uppercase tracking-widest">Admin</span>
+        </motion.button>
+      )}
+
+      {/* Background Pattern */}
+      <div className="fixed inset-0 pointer-events-none z-[-1] opacity-[0.03]">
+        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern
+              id="mq-pattern"
+              x="0"
+              y="0"
+              width="100"
+              height="100"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M0 50 Q 25 25, 50 50 T 100 50"
+                fill="none"
+                stroke="#6A747A"
+                strokeWidth="1"
+              />
+              <path
+                d="M0 100 Q 25 75, 50 100 T 100 100"
+                fill="none"
+                stroke="#6A747A"
+                strokeWidth="1"
+              />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#mq-pattern)" />
+        </svg>
+      </div>
+    </div>
+  );
+}
