@@ -528,18 +528,19 @@ export async function generateNanoBananaPro(
   prompt: string,
   negativePrompt: string,
   aspectRatio: string,
-  resolution: '1K' | '2K'
+  resolution: '1K' | '2K',
+  imageRef?: string
 ): Promise<string> {
-  const aspectMap: Record<string, string> = {
-    '16:9': '16:9',
-    '1:1': '1:1',
-    '9:16': '9:16',
-    '5:4': '4:3',
-    '4:5': '3:4',
-  };
-  const imagenAspect = aspectMap[aspectRatio] || '16:9';
+  const fullPrompt = `MODO PRO — MÁXIMA FIDELIDADE FOTORREALISTA\n\n${prompt}\n\nREQUISITOS DE QUALIDADE PRO:\n- Fotografia arquitetural editorial de altíssima resolução\n- Microdetalhes de textura: poros de concreto, veios de madeira, reflexos especulares calibrados\n- Iluminação cinematográfica com gradiente de sombras suaves e penumbra precisa\n- Aberração cromática sutil nas bordas, grain de filme Kodak Portra 400\n- Profundidade de campo calculada: foco nítido no plano principal com bokeh progressivo\n- Resolução alvo: ${resolution === '2K' ? 'Ultra HD 2K' : 'Alta definição 1K'}, Aspect Ratio ${aspectRatio}\n\nNEGATIVO ABSOLUTO (PROIBIDO): ${negativePrompt}`;
 
-  const fullPrompt = `${prompt}. Resolução ${resolution}. Evite: ${negativePrompt}`;
+  const parts: any[] = [{ text: fullPrompt }];
+
+  if (imageRef) {
+    const match = imageRef.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+    if (match) {
+      parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+    }
+  }
 
   const ai = getAI();
 
@@ -548,25 +549,33 @@ export async function generateNanoBananaPro(
   );
 
   try {
-    const generatePromise = (ai.models as any).generateImages({
-      model: 'imagen-3.0-generate-002',
-      prompt: fullPrompt,
+    const generatePromise = ai.models.generateContent({
+      model: 'gemini-2.0-flash-preview-image-generation',
+      contents: { role: 'user', parts },
       config: {
-        numberOfImages: 1,
-        aspectRatio: imagenAspect,
-      },
+        maxOutputTokens: 10000,
+        responseModalities: ['IMAGE', 'TEXT'],
+        imageConfig: {
+          aspectRatio: aspectRatio as any,
+          imageSize: resolution,
+        },
+      } as any,
     });
 
-    const response = (await Promise.race([generatePromise, timeoutPromise])) as any;
+    const response = (await Promise.race([
+      generatePromise,
+      timeoutPromise,
+    ])) as GenerateContentResponse;
 
-    const imageBytes = response?.generatedImages?.[0]?.image?.imageBytes;
-    if (!imageBytes) {
-      throw new Error(
-        'Nano Banana Pro não retornou imagem. Verifique se o modelo Imagen 3 está disponível na sua chave de API.'
-      );
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData && part.inlineData.data) {
+        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      }
     }
 
-    return `data:image/png;base64,${imageBytes}`;
+    throw new Error(
+      'Nano Banana Pro não retornou imagem. Verifique se sua chave de API tem acesso ao modelo gemini-2.0-flash-preview-image-generation.'
+    );
   } catch (err) {
     console.error('Erro Nano Banana Pro:', err);
     throw err;

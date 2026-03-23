@@ -2445,7 +2445,8 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                               result.positive,
                               result.negative,
                               genAspect,
-                              genRes
+                              genRes,
+                              image || undefined
                             )
                           : await generateNanoBananaImage(
                               result.positive,
