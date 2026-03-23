@@ -51,6 +51,7 @@ import {
   analyzePostProduction,
   analyzeDetailCloses,
   generateNanoBananaImage,
+  generateNanoBananaPro,
 } from '../services/geminiService';
 import { analyzeMoveImage, generateMovePrompts } from '../services/moveService';
 
@@ -108,6 +109,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   const [postProdResult, setPostProdResult] = useState<PostProductionResult | null>(null);
 
   // Geração de Imagem Premium
+  const [genModel, setGenModel] = useState<'flash' | 'pro'>('flash');
   const [genAspect, setGenAspect] = useState<string>('16:9');
   const [genRes, setGenRes] = useState<'1K' | '2K'>('1K');
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
@@ -2256,12 +2258,84 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                 Geração de Imagem
               </h2>
               <p className="text-bluegray/60 max-w-lg mx-auto">
-                Crie um render conceitual instantâneo usando o Gemini / Nano Banana 2.
+                Crie um render conceitual instantâneo com{' '}
+                {genModel === 'flash' ? 'Nano Banana Flash' : 'Nano Banana Pro'}.
               </p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="space-y-6">
+                {/* Model selector */}
+                <Card className="p-6">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-bluegray mb-4">
+                    Modelo de Geração
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setGenModel('flash')}
+                      className={cn(
+                        'p-4 rounded-xl border-2 text-left transition-all',
+                        genModel === 'flash'
+                          ? 'border-[#CFA697] bg-[#CFA697]/10'
+                          : 'border-black/10 hover:bg-black/5'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Zap
+                          className={cn(
+                            'w-4 h-4',
+                            genModel === 'flash' ? 'text-[#CFA697]' : 'text-bluegray/50'
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            'text-sm font-bold',
+                            genModel === 'flash' ? 'text-[#CFA697]' : 'text-bluegray'
+                          )}
+                        >
+                          Flash
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-bluegray/50 leading-relaxed">
+                        Nano Banana Flash
+                        <br />
+                        Rápido · ~30s
+                      </p>
+                    </button>
+                    <button
+                      onClick={() => setGenModel('pro')}
+                      className={cn(
+                        'p-4 rounded-xl border-2 text-left transition-all',
+                        genModel === 'pro'
+                          ? 'border-[#CFA697] bg-[#CFA697]/10'
+                          : 'border-black/10 hover:bg-black/5'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Star
+                          className={cn(
+                            'w-4 h-4',
+                            genModel === 'pro' ? 'text-[#CFA697]' : 'text-bluegray/50'
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            'text-sm font-bold',
+                            genModel === 'pro' ? 'text-[#CFA697]' : 'text-bluegray'
+                          )}
+                        >
+                          Pro
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-bluegray/50 leading-relaxed">
+                        Nano Banana Pro
+                        <br />
+                        Alta qualidade · ~60s
+                      </p>
+                    </button>
+                  </div>
+                </Card>
+
                 <Card className="p-6">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-bluegray">
@@ -2365,13 +2439,21 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                     setGeneratedImg(null);
                     setGenError(null);
                     try {
-                      const img = await generateNanoBananaImage(
-                        result.positive,
-                        result.negative,
-                        genAspect,
-                        genRes,
-                        image || undefined
-                      );
+                      const img =
+                        genModel === 'pro'
+                          ? await generateNanoBananaPro(
+                              result.positive,
+                              result.negative,
+                              genAspect,
+                              genRes
+                            )
+                          : await generateNanoBananaImage(
+                              result.positive,
+                              result.negative,
+                              genAspect,
+                              genRes,
+                              image || undefined
+                            );
                       setGeneratedImg(img);
                     } catch (e: any) {
                       console.error('Erro no catch Studio:', e);
@@ -2419,7 +2501,10 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                 {genError && (
                   <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-xl text-red-500 text-xs font-mono break-all relative">
                     <AlertTriangle className="w-5 h-5 mb-2" />
-                    <p className="font-bold mb-1">FALHA NA GERAÇÃO NANO BANANA / IMAGEN 2:</p>
+                    <p className="font-bold mb-1">
+                      FALHA NA GERAÇÃO{' '}
+                      {genModel === 'pro' ? 'NANO BANANA PRO' : 'NANO BANANA FLASH'}:
+                    </p>
                     <p>{genError}</p>
                     <button
                       onClick={() => setGenError(null)}

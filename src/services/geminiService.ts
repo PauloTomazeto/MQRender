@@ -524,6 +524,55 @@ export async function analyzePostProduction(
   return validateOrThrow(PostProductionResultSchema, raw, 'analyzePostProduction');
 }
 
+export async function generateNanoBananaPro(
+  prompt: string,
+  negativePrompt: string,
+  aspectRatio: string,
+  resolution: '1K' | '2K'
+): Promise<string> {
+  const aspectMap: Record<string, string> = {
+    '16:9': '16:9',
+    '1:1': '1:1',
+    '9:16': '9:16',
+    '5:4': '4:3',
+    '4:5': '3:4',
+  };
+  const imagenAspect = aspectMap[aspectRatio] || '16:9';
+
+  const fullPrompt = `${prompt}. Resolução ${resolution}. Evite: ${negativePrompt}`;
+
+  const ai = getAI();
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('A geração da imagem demorou demais (timeout).')), 120000)
+  );
+
+  try {
+    const generatePromise = (ai.models as any).generateImages({
+      model: 'imagen-3.0-generate-002',
+      prompt: fullPrompt,
+      config: {
+        numberOfImages: 1,
+        aspectRatio: imagenAspect,
+      },
+    });
+
+    const response = (await Promise.race([generatePromise, timeoutPromise])) as any;
+
+    const imageBytes = response?.generatedImages?.[0]?.image?.imageBytes;
+    if (!imageBytes) {
+      throw new Error(
+        'Nano Banana Pro não retornou imagem. Verifique se o modelo Imagen 3 está disponível na sua chave de API.'
+      );
+    }
+
+    return `data:image/png;base64,${imageBytes}`;
+  } catch (err) {
+    console.error('Erro Nano Banana Pro:', err);
+    throw err;
+  }
+}
+
 export async function generateNanoBananaImage(
   prompt: string,
   negativePrompt: string,
