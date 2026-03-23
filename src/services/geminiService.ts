@@ -554,7 +554,7 @@ export async function generateNanoBananaPro(
       contents: { role: 'user', parts },
       config: {
         maxOutputTokens: 10000,
-        responseModalities: ['IMAGE', 'TEXT'],
+        responseModalities: ['TEXT', 'IMAGE'],
         imageConfig: {
           aspectRatio: aspectRatio as any,
           imageSize: resolution,
@@ -574,7 +574,7 @@ export async function generateNanoBananaPro(
     }
 
     throw new Error(
-      'Nano Banana Pro não retornou imagem. Verifique se sua chave de API tem acesso ao modelo gemini-3-pro-image-preview.'
+      'Nano Banana Pro: a API retornou sucesso mas sem imagem. Modelo: gemini-3-pro-image-preview.'
     );
   } catch (err) {
     console.error('Erro Nano Banana Pro:', err);
