@@ -20,18 +20,6 @@ function getAI() {
   return new GoogleGenAI({ apiKey: key });
 }
 
-function getProAI() {
-  const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
-
-  if (!key) {
-    throw new Error(
-      'Chave de API não configurada. Adicione GEMINI_API_KEY no arquivo .env (copie .env.example como base).'
-    );
-  }
-
-  return new GoogleGenAI({ apiKey: key, httpOptions: { apiVersion: 'v1alpha' } } as any);
-}
-
 const SYSTEM_INSTRUCTION = `
 Você é o motor de análise do MQPROMP, um gerador de prompts de fotografia arquitetural.
 Sua missão é transformar imagens técnicas (renders, perspectivas, plantas) em descritores fotográficos reais.
@@ -554,7 +542,7 @@ export async function generateNanoBananaPro(
     }
   }
 
-  const ai = getProAI();
+  const ai = getAI();
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('A geração da imagem demorou demais (timeout).')), 120000)
@@ -562,7 +550,7 @@ export async function generateNanoBananaPro(
 
   try {
     const generatePromise = ai.models.generateContent({
-      model: 'gemini-2.0-flash-preview-image-generation',
+      model: 'gemini-3-pro-image-preview',
       contents: { role: 'user', parts },
       config: {
         maxOutputTokens: 10000,
@@ -586,7 +574,7 @@ export async function generateNanoBananaPro(
     }
 
     throw new Error(
-      'Nano Banana Pro não retornou imagem. Verifique se sua chave de API tem acesso ao modelo gemini-2.0-flash-preview-image-generation.'
+      'Nano Banana Pro não retornou imagem. Verifique se sua chave de API tem acesso ao modelo gemini-3-pro-image-preview.'
     );
   } catch (err) {
     console.error('Erro Nano Banana Pro:', err);
