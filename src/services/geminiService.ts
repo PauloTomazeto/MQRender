@@ -417,7 +417,9 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
     };
 
     const raw = await callGemini(contents, schema);
-    return validateOrThrow(ScanResultSchema, raw, 'analyzeImage');
+    // Cast needed: Zod v4 infers catch/preprocess fields as optional in the object type,
+    // but the runtime output is always defined. The ScanResult interface is the source of truth.
+    return validateOrThrow(ScanResultSchema, raw, 'analyzeImage') as unknown as ScanResult;
   } catch (error) {
     console.error('Erro na análise da imagem:', error);
     throw error;

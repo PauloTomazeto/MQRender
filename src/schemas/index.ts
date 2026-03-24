@@ -65,25 +65,29 @@ export const ScanResultSchema = z.object({
       z.object({
         id: z.string(),
         location: z.string(),
-        type: z.enum(['rectangle', 'sphere', 'spot', 'ies', 'omni', 'dome', 'emissive', 'ambient']),
-        intensity_initial: z.number().min(0).max(100),
-        temp_k_initial: z.number().min(1000).max(15000),
-        // V-Ray precision fields
-        shape: z.enum(['rectangular', 'elliptical', 'spherical', 'conical', 'mesh']).optional(),
-        decay: z.enum(['inverse_square', 'linear', 'none']).optional(),
-        cone_angle: z.number().min(0).max(180).optional(),
-        penumbra_angle: z.number().min(0).max(90).optional(),
-        directionality: z.number().min(0).max(1).optional(),
-        shadow_softness: z.number().min(0).max(1).optional(),
-        affect_specular: z.boolean().optional(),
-        affect_diffuse: z.boolean().optional(),
-        affect_reflections: z.boolean().optional(),
-        visible_in_render: z.boolean().optional(),
-        spatial_x_pct: z.number().min(0).max(100).optional(),
-        spatial_y_pct: z.number().min(0).max(100).optional(),
-        confidence: z.number().min(0).max(100).optional(),
-        bloom_glare: z.boolean().optional(),
-        color_hex: z.string().optional(),
+        // z.preprocess keeps the output type required (non-optional) while accepting any AI input
+        type: z.preprocess(v => (typeof v === 'string' ? v : 'ambient'), z.string()),
+        intensity_initial: z.preprocess(v => (typeof v === 'number' ? v : 50), z.number()),
+        temp_k_initial: z.preprocess(v => (typeof v === 'number' ? v : 4000), z.number()),
+        // V-Ray precision fields — all optional with .catch() fallbacks on enums
+        shape: z
+          .enum(['rectangular', 'elliptical', 'spherical', 'conical', 'mesh'])
+          .optional()
+          .catch(undefined),
+        decay: z.enum(['inverse_square', 'linear', 'none']).optional().catch(undefined),
+        cone_angle: z.number().optional().catch(undefined),
+        penumbra_angle: z.number().optional().catch(undefined),
+        directionality: z.number().optional().catch(undefined),
+        shadow_softness: z.number().optional().catch(undefined),
+        affect_specular: z.boolean().optional().catch(undefined),
+        affect_diffuse: z.boolean().optional().catch(undefined),
+        affect_reflections: z.boolean().optional().catch(undefined),
+        visible_in_render: z.boolean().optional().catch(undefined),
+        spatial_x_pct: z.number().optional().catch(undefined),
+        spatial_y_pct: z.number().optional().catch(undefined),
+        confidence: z.number().optional().catch(undefined),
+        bloom_glare: z.boolean().optional().catch(undefined),
+        color_hex: z.string().optional().catch(undefined),
       })
     )
     .optional(),

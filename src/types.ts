@@ -93,7 +93,7 @@ export interface LightPoint {
   id: string;
   location: string;
   // V-Ray light type classification (Rectangle, Sphere, Spot, IES, Omni, Dome, Emissive)
-  type: 'rectangle' | 'sphere' | 'spot' | 'ies' | 'omni' | 'dome' | 'emissive' | 'ambient';
+  type: string;
   intensity_initial: number; // 0-100 scale
   temp_k_initial: number; // color temperature in Kelvin (2000K–10000K)
   // ─── V-Ray Precision Fields ───────────────────────────────────────────────
