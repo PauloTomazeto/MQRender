@@ -173,9 +173,22 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
           id: lp.id,
           enabled: true,
           type: lp.type,
-          intensity: lp.intensity_initial * 100,
+          intensity: lp.intensity_initial,
           temperature: ((lp.temp_k_initial - 2000) / 8000) * 100,
           location: lp.location,
+          // V-Ray precision fields carried from scan
+          shape: lp.shape,
+          decay: lp.decay ?? 'inverse_square',
+          cone_angle: lp.cone_angle,
+          directionality: lp.directionality !== undefined ? lp.directionality * 100 : undefined,
+          shadow_softness: lp.shadow_softness !== undefined ? lp.shadow_softness * 100 : 50,
+          affect_specular: lp.affect_specular ?? true,
+          affect_reflections: lp.affect_reflections ?? false,
+          bloom_glare: lp.bloom_glare ?? false,
+          color_hex: lp.color_hex ?? '#FFFFFF',
+          spatial_x_pct: lp.spatial_x_pct,
+          spatial_y_pct: lp.spatial_y_pct,
+          confidence: lp.confidence,
         }));
       }
 
@@ -1664,6 +1677,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
 
                                 {lp.enabled && (
                                   <div className="space-y-4 pt-3 border-t border-black/5 animate-in slide-in-from-top-2">
+                                    {/* ── Intensidade ── */}
                                     <div className="space-y-2">
                                       <div className="flex justify-between items-center">
                                         <label className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
@@ -1685,10 +1699,12 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                                         className="py-1 line-clamp-none h-auto"
                                       />
                                     </div>
+
+                                    {/* ── Temperatura de Cor ── */}
                                     <div className="space-y-2">
                                       <div className="flex justify-between items-center">
                                         <label className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
-                                          Cor / Temperatura
+                                          Temperatura de Cor
                                         </label>
                                         <span className="text-[9px] font-bold text-bluegray">
                                           {Math.round(2000 + (lp.temperature / 100) * 8000)}K
@@ -1706,9 +1722,235 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                                         className="py-1 line-clamp-none h-auto bg-gradient-to-r from-orange-200 via-white to-blue-200 rounded-full"
                                       />
                                       <div className="flex justify-between text-[8px] uppercase tracking-widest text-bluegray/40 font-bold">
-                                        <span className="text-orange-500">Quente</span>
-                                        <span className="text-blue-500">Fria</span>
+                                        <span className="text-orange-500">Quente 2000K</span>
+                                        <span className="text-blue-500">Fria 10000K</span>
                                       </div>
+                                    </div>
+
+                                    {/* ── Parâmetros V-Ray ── */}
+                                    <div className="pt-3 border-t border-gold/15 space-y-4">
+                                      <p className="text-[8px] uppercase tracking-widest font-bold text-gold/60 flex items-center gap-1.5">
+                                        <Zap className="w-2.5 h-2.5" />
+                                        Parâmetros V-Ray
+                                      </p>
+
+                                      {/* Decaimento */}
+                                      <div className="flex items-center justify-between">
+                                        <label className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
+                                          Decaimento
+                                        </label>
+                                        <select
+                                          value={lp.decay ?? 'inverse_square'}
+                                          onChange={e => {
+                                            const newLps = [...config.lightPoints];
+                                            newLps[idx] = {
+                                              ...newLps[idx],
+                                              decay: e.target.value as
+                                                | 'inverse_square'
+                                                | 'linear'
+                                                | 'none',
+                                            };
+                                            setConfig({ ...config, lightPoints: newLps });
+                                          }}
+                                          className="text-[9px] font-bold text-bluegray bg-offwhite border border-black/10 rounded-lg px-2 py-1 focus:outline-none focus:border-gold"
+                                        >
+                                          <option value="inverse_square">
+                                            Quadrado Inverso (físico)
+                                          </option>
+                                          <option value="linear">Linear</option>
+                                          <option value="none">Sem Decaimento</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Suavidade da Sombra */}
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                          <label className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
+                                            Penumbra da Sombra
+                                          </label>
+                                          <span className="text-[9px] font-bold text-bluegray">
+                                            {Math.round(lp.shadow_softness ?? 50)}%
+                                          </span>
+                                        </div>
+                                        <Slider
+                                          value={lp.shadow_softness ?? 50}
+                                          onChange={val => {
+                                            const newLps = [...config.lightPoints];
+                                            newLps[idx] = { ...newLps[idx], shadow_softness: val };
+                                            setConfig({ ...config, lightPoints: newLps });
+                                          }}
+                                          max={100}
+                                          step={1}
+                                          className="py-1 line-clamp-none h-auto"
+                                        />
+                                        <div className="flex justify-between text-[8px] uppercase tracking-widest text-bluegray/30 font-bold">
+                                          <span>Aresta Sharp</span>
+                                          <span>Penumbra Total</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Direcionalidade — apenas rectangle/emissive */}
+                                      {(lp.type === 'rectangle' || lp.type === 'emissive') && (
+                                        <div className="space-y-2">
+                                          <div className="flex justify-between items-center">
+                                            <label className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
+                                              Direcionalidade
+                                            </label>
+                                            <span className="text-[9px] font-bold text-bluegray">
+                                              {Math.round(lp.directionality ?? 50)}%
+                                            </span>
+                                          </div>
+                                          <Slider
+                                            value={lp.directionality ?? 50}
+                                            onChange={val => {
+                                              const newLps = [...config.lightPoints];
+                                              newLps[idx] = { ...newLps[idx], directionality: val };
+                                              setConfig({ ...config, lightPoints: newLps });
+                                            }}
+                                            max={100}
+                                            step={1}
+                                            className="py-1 line-clamp-none h-auto"
+                                          />
+                                          <div className="flex justify-between text-[8px] uppercase tracking-widest text-bluegray/30 font-bold">
+                                            <span>Difuso 360°</span>
+                                            <span>Feixe Colimado</span>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Cone — apenas spot/ies */}
+                                      {(lp.type === 'spot' || lp.type === 'ies') && (
+                                        <div className="space-y-2">
+                                          <div className="flex justify-between items-center">
+                                            <label className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
+                                              Ângulo do Cone
+                                            </label>
+                                            <span className="text-[9px] font-bold text-bluegray">
+                                              {Math.round(lp.cone_angle ?? 30)}°
+                                            </span>
+                                          </div>
+                                          <Slider
+                                            value={lp.cone_angle ?? 30}
+                                            onChange={val => {
+                                              const newLps = [...config.lightPoints];
+                                              newLps[idx] = { ...newLps[idx], cone_angle: val };
+                                              setConfig({ ...config, lightPoints: newLps });
+                                            }}
+                                            max={120}
+                                            step={1}
+                                            className="py-1 line-clamp-none h-auto"
+                                          />
+                                          <div className="flex justify-between text-[8px] uppercase tracking-widest text-bluegray/30 font-bold">
+                                            <span>Narrow 5°</span>
+                                            <span>Flood 120°</span>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Toggles: Especular / Reflexos / Bloom */}
+                                      <div className="grid grid-cols-3 gap-2 pt-1">
+                                        <div className="flex flex-col items-center gap-1.5 p-2 rounded-xl bg-offwhite">
+                                          <label className="text-[8px] font-bold uppercase tracking-widest text-bluegray/40 text-center leading-tight">
+                                            Especular
+                                          </label>
+                                          <Switch
+                                            checked={lp.affect_specular ?? true}
+                                            onChange={val => {
+                                              const newLps = [...config.lightPoints];
+                                              newLps[idx] = {
+                                                ...newLps[idx],
+                                                affect_specular: val,
+                                              };
+                                              setConfig({ ...config, lightPoints: newLps });
+                                            }}
+                                          />
+                                        </div>
+                                        <div className="flex flex-col items-center gap-1.5 p-2 rounded-xl bg-offwhite">
+                                          <label className="text-[8px] font-bold uppercase tracking-widest text-bluegray/40 text-center leading-tight">
+                                            Reflexos
+                                          </label>
+                                          <Switch
+                                            checked={lp.affect_reflections ?? false}
+                                            onChange={val => {
+                                              const newLps = [...config.lightPoints];
+                                              newLps[idx] = {
+                                                ...newLps[idx],
+                                                affect_reflections: val,
+                                              };
+                                              setConfig({ ...config, lightPoints: newLps });
+                                            }}
+                                          />
+                                        </div>
+                                        <div className="flex flex-col items-center gap-1.5 p-2 rounded-xl bg-offwhite">
+                                          <label className="text-[8px] font-bold uppercase tracking-widest text-bluegray/40 text-center leading-tight">
+                                            Bloom
+                                          </label>
+                                          <Switch
+                                            checked={lp.bloom_glare ?? false}
+                                            onChange={val => {
+                                              const newLps = [...config.lightPoints];
+                                              newLps[idx] = { ...newLps[idx], bloom_glare: val };
+                                              setConfig({ ...config, lightPoints: newLps });
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Cor hex + Confiança */}
+                                      <div className="flex items-center gap-3">
+                                        <label className="text-[8px] font-bold uppercase tracking-widest text-bluegray/40 shrink-0">
+                                          Cor da Luz
+                                        </label>
+                                        <div className="flex items-center gap-2 flex-1">
+                                          <div
+                                            className="w-5 h-5 rounded-full border border-black/10 shrink-0 shadow-sm"
+                                            style={{ backgroundColor: lp.color_hex ?? '#FFFFFF' }}
+                                          />
+                                          <input
+                                            type="text"
+                                            value={lp.color_hex ?? '#FFFFFF'}
+                                            onChange={e => {
+                                              const newLps = [...config.lightPoints];
+                                              newLps[idx] = {
+                                                ...newLps[idx],
+                                                color_hex: e.target.value,
+                                              };
+                                              setConfig({ ...config, lightPoints: newLps });
+                                            }}
+                                            className="text-[9px] font-mono text-bluegray/80 bg-transparent border-b border-black/10 focus:outline-none focus:border-gold w-full"
+                                            placeholder="#FFFFFF"
+                                          />
+                                        </div>
+                                        {lp.confidence !== undefined && (
+                                          <Badge
+                                            className={cn(
+                                              'text-[8px] px-2 py-0.5 shrink-0 font-bold',
+                                              lp.confidence >= 80
+                                                ? 'bg-green-100 text-green-700'
+                                                : lp.confidence >= 50
+                                                  ? 'bg-amber-100 text-amber-700'
+                                                  : 'bg-red-100 text-red-600'
+                                            )}
+                                          >
+                                            {lp.confidence}% conf.
+                                          </Badge>
+                                        )}
+                                      </div>
+
+                                      {/* Posição espacial (leitura) */}
+                                      {lp.spatial_x_pct !== undefined &&
+                                        lp.spatial_y_pct !== undefined && (
+                                          <div className="flex items-center gap-2 text-[8px] font-mono text-bluegray/30">
+                                            <Eye className="w-2.5 h-2.5 shrink-0" />
+                                            <span>
+                                              X:{Math.round(lp.spatial_x_pct)}% Y:
+                                              {Math.round(lp.spatial_y_pct)}%
+                                            </span>
+                                            {lp.shape && (
+                                              <span className="text-bluegray/25">· {lp.shape}</span>
+                                            )}
+                                          </div>
+                                        )}
                                     </div>
                                   </div>
                                 )}

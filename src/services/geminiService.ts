@@ -64,6 +64,47 @@ Para cada material identificado, decomponha em 4 camadas físicas obrigatórias:
 - CAMADA REFLECTION (pbr_reflection 0.0-1.0): Calcule a intensidade de reflexão. Metais polidos → 0.9+. Vidro → 0.85. Madeira envernizada → 0.4. Concreto aparente → 0.05. Tecido → 0.02. Preencha pbr_glossiness: reflexão nítida (>0.8) ou difusa (<0.4).
 - CAMADA BUMP: Identifique micro-relevos da superfície — poros, fissuras, ranhuras, tramado, espessura de pintura. Descreva o que sobe (branco no mapa) e o que desce (preto). Ex: "juntas de rejunte afundam 2mm, superfície da cerâmica levemente convexa".
 - COMPORTAMENTO DE LUZ (pbr_light_behavior): Como esse material reage fisicamente à luz da cena — absorção, difusão lambertiana, reflexão especular, translucidez, subsurface scattering, anisotropia. Ex: "difunde luz de forma lambertiana uniforme, absorve 70% no espectro visível, sem componente especular".
+
+TOOL-LUZ — PIPELINE DE PRECISÃO DE ILUMINAÇÃO (Metodologia V-Ray Lights):
+
+ETAPA A — LUZ AMBIENTE GLOBAL (campo "light"):
+- period: identifique o período temporal (manhã/tarde/entardecer/noite/nublado/chuva).
+- temp_k: calcule a temperatura de cor dominante em Kelvin. Referência: luz do dia clara=5500-6500K, céu nublado=6500-8000K, golden hour=2500-3500K, luz artificial tungstênio=2700-3200K, LED neutro=4000K.
+- azimuthal_direction: direção azimutal da fonte principal (N/S/L/O ou graus 0-360°).
+- elevation_angle: ângulo de elevação da fonte acima do horizonte (-90° a 90°). Sol ao meio-dia=~75°, golden hour=5-15°.
+- quality: classifique como "hard" (sombras nítidas, fonte pontual), "soft" (penumbra difusa, céu nublado), "diffuse" (sem sombras, luz uniforme), "directional" (feixe direcional visível).
+- ratio: relação luz principal : preenchimento (ex: "4:1", "2:1", "1:1" para cena flat).
+- shadows: descrição da penumbra (ex: "bordas nítidas 2px de penumbra", "sombras totalmente difusas sem borda definida").
+- shadow_direction: para onde as sombras projetam (ex: "para nordeste a 45°", "em direção à câmera").
+- artificial_sources: liste cada tipo artificial detectado (ex: ["LED embutido", "arandela halogêna", "pendente tungstênio"]).
+- ambient_temp: temperatura de cor do ambiente como texto descritivo (ex: "ambiente quente com dominante âmbar", "iluminação fria azulada de norte").
+- dominant_source: descreva a fonte principal com precisão geográfica e angular (ex: "luz solar direta proveniente de noroeste a 35° de elevação").
+- light_mixing: como múltiplas fontes se mesclam (ex: "luz natural fria de janela leste mistura-se com luz artificial quente do teto criando gradiente 5500K→3200K").
+- indirect_ratio: proporção luz direta vs indireta/bounce (ex: "3:1 direta vs bounce", "predominantemente indireta 1:4").
+- bloom_glare: true se houver bloom/glare de lente visível em alguma fonte.
+
+ETAPA B — PONTOS DE LUZ INDIVIDUAIS (array "lightPoints"):
+Para cada fonte artificial ou natural pontual identificada na cena:
+- id: identificador único sequencial ("lp_01", "lp_02", etc.)
+- location: posição espacial precisa relativa à cena (ex: "teto central 2.8m de altura", "arandela lateral direita a 1.6m", "pendente sobre bancada").
+- type: classifique conforme tipos V-Ray: "rectangle" (LED painel/plafon/sanca), "sphere" (lâmpada globo/lustre), "spot" (spot direcionável/trilho), "ies" (luminária com fotometria real/distribuição complexa), "omni" (ponto de luz onidirecional/jardim), "dome" (luz de céu/HDRI ambiental), "emissive" (superfície emissora/LED fita), "ambient" (luz ambiente indeterminada).
+- shape: "rectangular" (painel LED), "elliptical" (spot oval), "spherical" (globo), "conical" (spot cônico), "mesh" (objeto emissor).
+- intensity_initial: estimativa de intensidade relativa 0-100 baseada na luminância visual percebida.
+- temp_k_initial: temperatura de cor da fonte em Kelvin (2000K tungstênio antigo → 6500K LED branco frio).
+- decay: sempre "inverse_square" para fontes reais (lei do quadrado inverso). Use "linear" apenas para luzes artísticas/atmosféricas. Use "none" para luz ambiente flat.
+- cone_angle: para spots, estime o ângulo do cone em graus pela dispersão visível da luz (10°=spot narrowbeam, 30°=spot médio, 60°=flood).
+- penumbra_angle: ângulo de suavização da borda do cone (5-15° típico).
+- directionality: para retângulos/painéis, quão direcional é o feixe (0.0=difuso em todas as direções, 1.0=feixe colimado perpendicular).
+- shadow_softness: suavidade das sombras geradas (0.0=sombra de aresta, 1.0=penumbra totalmente difusa).
+- affect_specular: true se a fonte cria highlights especulares visíveis nos materiais.
+- affect_diffuse: true se a fonte ilumina a superfície difusamente (quase sempre true).
+- affect_reflections: true se a fonte aparece refletida em superfícies especulares da cena.
+- visible_in_render: true se a geometria da lâmpada/luminária é visível; false se apenas o efeito de luz é visto.
+- spatial_x_pct: posição horizontal estimada da fonte na imagem (0=esquerda, 100=direita).
+- spatial_y_pct: posição vertical estimada (0=topo, 100=base).
+- confidence: sua confiança na detecção desta fonte (0-100). Reduza se a fonte for inferida, não diretamente visível.
+- bloom_glare: true se esta fonte específica gera bloom/glare de lente visível.
+- color_hex: cor hexadecimal da luz emitida (ex: "#FFF0D8" para tungstênio, "#E8F4FF" para LED frio, "#FFFFFF" para neutro).
 `;
 
 async function callGemini(contents: any, schema?: any): Promise<any> {
@@ -284,6 +325,13 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
             quality: { type: Type.STRING },
             ratio: { type: Type.STRING },
             shadows: { type: Type.STRING },
+            shadow_direction: { type: Type.STRING },
+            artificial_sources: { type: Type.ARRAY, items: { type: Type.STRING } },
+            ambient_temp: { type: Type.STRING },
+            bloom_glare: { type: Type.BOOLEAN },
+            dominant_source: { type: Type.STRING },
+            light_mixing: { type: Type.STRING },
+            indirect_ratio: { type: Type.STRING },
           },
           required: ['period', 'temp_k', 'quality'],
         },
@@ -294,9 +342,31 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
             properties: {
               id: { type: Type.STRING },
               location: { type: Type.STRING },
-              type: { type: Type.STRING },
+              type: {
+                type: Type.STRING,
+                enum: ['rectangle', 'sphere', 'spot', 'ies', 'omni', 'dome', 'emissive', 'ambient'],
+              },
               intensity_initial: { type: Type.NUMBER },
               temp_k_initial: { type: Type.NUMBER },
+              // V-Ray precision fields
+              shape: {
+                type: Type.STRING,
+                enum: ['rectangular', 'elliptical', 'spherical', 'conical', 'mesh'],
+              },
+              decay: { type: Type.STRING, enum: ['inverse_square', 'linear', 'none'] },
+              cone_angle: { type: Type.NUMBER },
+              penumbra_angle: { type: Type.NUMBER },
+              directionality: { type: Type.NUMBER },
+              shadow_softness: { type: Type.NUMBER },
+              affect_specular: { type: Type.BOOLEAN },
+              affect_diffuse: { type: Type.BOOLEAN },
+              affect_reflections: { type: Type.BOOLEAN },
+              visible_in_render: { type: Type.BOOLEAN },
+              spatial_x_pct: { type: Type.NUMBER },
+              spatial_y_pct: { type: Type.NUMBER },
+              confidence: { type: Type.NUMBER },
+              bloom_glare: { type: Type.BOOLEAN },
+              color_hex: { type: Type.STRING },
             },
             required: ['id', 'location', 'type', 'intensity_initial', 'temp_k_initial'],
           },
@@ -398,6 +468,52 @@ export async function generatePrompt(
       3. GLOSSINESS (Nitidez da Reflexão): Diferencie reflexão nítida vs. difusa. Ex: "piso em porcelanato 120×60cm polido com reflexo sharp de alta glossiness (≈0.90), espelhando o volume arquitetônico oposto com leve distorção de perspectiva" OU "madeira de carvalho escovado com reflexão satin difusa (glossiness ≈0.35), sem imagem refletida definida".
       4. BUMP (Micro-relevo): Descreva a textura tridimensional da superfície perceptível ao toque e à luz rasante. Ex: "superfície em concreto aparente com micro-relevo de fôrma de madeira (juntas a cada 60cm), poros de bolhas de ar e variação de profundidade de 0.5-2mm criando sombra rasante".
       Os materiais identificados no scan com dados PBR são: ${JSON.stringify(scan.materials?.map((m: any) => ({ elemento: m.elemento, acabamento: m.acabamento, reflectancia: m.reflectancia, pbr_diffuse: m.pbr_diffuse, pbr_reflection: m.pbr_reflection, pbr_glossiness: m.pbr_glossiness, pbr_bump: m.pbr_bump, pbr_light_behavior: m.pbr_light_behavior })) ?? [])}
+      [ORQUESTRAÇÃO DE ILUMINAÇÃO V-RAY — OBRIGATÓRIO] O prompt DEVE conter uma seção de iluminação detalhada construída a partir dos dados abaixo. Descreva a iluminação com linguagem fotográfica precisa e física, nunca use termos de CGI.
+      DADOS DE LUZ AMBIENTE: ${JSON.stringify({
+        period: scan.light?.period,
+        temp_k: scan.light?.temp_k,
+        quality: scan.light?.quality,
+        azimuthal_direction: scan.light?.azimuthal_direction,
+        elevation_angle: scan.light?.elevation_angle,
+        ratio: scan.light?.ratio,
+        shadows: scan.light?.shadows,
+        shadow_direction: scan.light?.shadow_direction,
+        artificial_sources: scan.light?.artificial_sources,
+        ambient_temp: scan.light?.ambient_temp,
+        dominant_source: scan.light?.dominant_source,
+        light_mixing: scan.light?.light_mixing,
+        indirect_ratio: scan.light?.indirect_ratio,
+        bloom_glare: scan.light?.bloom_glare,
+      })}
+      PONTOS DE LUZ ARTIFICIAIS CONFIGURADOS: ${JSON.stringify(
+        (config.lightPoints ?? [])
+          .filter((lp: any) => lp.enabled)
+          .map((lp: any) => ({
+            id: lp.id,
+            location: lp.location,
+            type: lp.type,
+            shape: lp.shape,
+            intensity_pct: lp.intensity,
+            temp_k: Math.round(2000 + (lp.temperature / 100) * 8000),
+            decay: lp.decay,
+            cone_angle: lp.cone_angle,
+            directionality_pct: lp.directionality,
+            shadow_softness_pct: lp.shadow_softness,
+            affect_specular: lp.affect_specular,
+            affect_reflections: lp.affect_reflections,
+            bloom_glare: lp.bloom_glare,
+            color_hex: lp.color_hex,
+            confidence: lp.confidence,
+          }))
+      )}
+      REGRAS DE ILUMINAÇÃO V-RAY PARA O PROMPT:
+      - Descreva a fonte de luz PRINCIPAL com direção azimutal, ângulo de elevação e temperatura Kelvin. Ex: "luz solar direta proveniente de noroeste (315°) a 35° de elevação, temperatura 5200K, qualidade hard com sombras de bordas nítidas projetadas para sudeste".
+      - Para cada ponto de luz artificial ATIVO: descreva tipo V-Ray (rectangle/sphere/spot/ies), localização precisa, temperatura K, intensidade relativa, e se gera highlights especulares ou aparece em reflexos. Ex: "luminária retangular LED embutida no teto central, temperatura 3200K, intensidade moderada 60%, criando reflexo especular linear na bancada de granito polido abaixo".
+      - Descreva o DECAIMENTO de cada fonte artificial: "atenuação física por quadrado inverso, criando queda de intensidade natural com distância".
+      - Se houver bloom/glare ativo: "leve vazamento de luz (bloom) ao redor da fonte direta, simulando dispersão de lente fotográfica".
+      - Descreva a MISTURA de fontes: como a luz natural e artificial se mesclam, qual domina, onde há gradiente de temperatura de cor.
+      - Mencione a proporção luz direta vs indireta (bounce): "iluminação indireta de bounce nas paredes amplifica a luz de preenchimento, ratio 2:1 direto/indireto".
+      - Descreva o efeito da luz em cada MATERIAL da cena segundo seu pbr_light_behavior: como a luz rasante revela o bump do concreto, como o especular da luminária LED aparece no porcelanato polido, etc.
       ${config.accessoryControl === 'maintain' ? '[ACESSÓRIOS] O prompt DEVE conter: "Retrate apenas objetos presentes na referência. Proibido adicionar ou inventar objetos decorativos, vasos, plantas, quadros ou qualquer item não existente na cena original."' : '[ACESSÓRIOS] Pode adornar a cena livremente.'}
       [FOTORREALISMO] O prompt positivo DEVE incluir: "fotorealista, fotografia RAW, Canon EOS R5, 35mm, fotografia de interiores arquitetônica, iluminação natural, 8K, DSLR, foto real da vida real"
       [NEGATIVE OBRIGATÓRIO] O Negative Prompt DEVE incluir no mínimo: "CGI, render, 3D render, unreal engine, octane render, vray, blender, digital art, artificial lighting, studio lighting, harsh shadows, oversaturated, low quality, blurry, distorted, watermark, text, people, illustration, painting, sketch, cartoon, plastic texture, fake, synthetic, computer generated, sketchup, maquete, maquette, architectural model, clay render, wireframe, added windows, added doors, added openings, extra furniture, invented objects, hallucinated elements, curtains where there are walls, blinds on solid walls"

@@ -51,15 +51,39 @@ export const ScanResultSchema = z.object({
     quality: z.string(),
     ratio: z.string().optional(),
     shadows: z.string().optional(),
+    shadow_direction: z.string().optional(),
+    artificial_sources: z.array(z.string()).optional(),
+    ambient_temp: z.string().optional(),
+    // Extended precision fields
+    bloom_glare: z.boolean().optional(),
+    dominant_source: z.string().optional(),
+    light_mixing: z.string().optional(),
+    indirect_ratio: z.string().optional(),
   }),
   lightPoints: z
     .array(
       z.object({
         id: z.string(),
         location: z.string(),
-        type: z.string(),
-        intensity_initial: z.number(),
-        temp_k_initial: z.number(),
+        type: z.enum(['rectangle', 'sphere', 'spot', 'ies', 'omni', 'dome', 'emissive', 'ambient']),
+        intensity_initial: z.number().min(0).max(100),
+        temp_k_initial: z.number().min(1000).max(15000),
+        // V-Ray precision fields
+        shape: z.enum(['rectangular', 'elliptical', 'spherical', 'conical', 'mesh']).optional(),
+        decay: z.enum(['inverse_square', 'linear', 'none']).optional(),
+        cone_angle: z.number().min(0).max(180).optional(),
+        penumbra_angle: z.number().min(0).max(90).optional(),
+        directionality: z.number().min(0).max(1).optional(),
+        shadow_softness: z.number().min(0).max(1).optional(),
+        affect_specular: z.boolean().optional(),
+        affect_diffuse: z.boolean().optional(),
+        affect_reflections: z.boolean().optional(),
+        visible_in_render: z.boolean().optional(),
+        spatial_x_pct: z.number().min(0).max(100).optional(),
+        spatial_y_pct: z.number().min(0).max(100).optional(),
+        confidence: z.number().min(0).max(100).optional(),
+        bloom_glare: z.boolean().optional(),
+        color_hex: z.string().optional(),
       })
     )
     .optional(),
