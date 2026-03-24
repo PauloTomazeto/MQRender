@@ -567,38 +567,65 @@ export async function generateNanoBananaPro(
     setTimeout(() => reject(new Error('A geração da imagem demorou demais (timeout).')), 120000)
   );
 
-  try {
-    const generatePromise = ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: { role: 'user', parts },
-      config: {
-        maxOutputTokens: 10000,
-        responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: {
-          aspectRatio: aspectRatio as any,
-          imageSize: resolution,
-        },
-      } as any,
-    });
+  const MAX_RETRIES = 3;
+  let lastError: unknown;
 
-    const response = (await Promise.race([
-      generatePromise,
-      timeoutPromise,
-    ])) as GenerateContentResponse;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const generatePromise = ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: { role: 'user', parts },
+        config: {
+          maxOutputTokens: 10000,
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: {
+            aspectRatio: aspectRatio as any,
+            imageSize: resolution,
+          },
+        } as any,
+      });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData && part.inlineData.data) {
-        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      const response = (await Promise.race([
+        generatePromise,
+        timeoutPromise,
+      ])) as GenerateContentResponse;
+
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+        }
       }
-    }
 
-    throw new Error(
-      'Nano Banana Pro: a API retornou sucesso mas sem imagem. Modelo: gemini-3-pro-image-preview.'
-    );
-  } catch (err) {
-    console.error('Erro Nano Banana Pro:', err);
-    throw err;
+      throw new Error(
+        'Nano Banana Pro: a API retornou sucesso mas sem imagem. Modelo: gemini-3-pro-image-preview.'
+      );
+    } catch (err: any) {
+      lastError = err;
+      const msg = typeof err?.message === 'string' ? err.message : JSON.stringify(err);
+      const is503 =
+        msg.includes('503') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('high demand') ||
+        msg.includes('currently experiencing');
+
+      if (is503 && attempt < MAX_RETRIES) {
+        const delay = attempt * 8000; // 8s, 16s
+        console.warn(
+          `Nano Banana Pro: servidor sobrecarregado (503). Tentativa ${attempt}/${MAX_RETRIES}. Aguardando ${delay / 1000}s...`
+        );
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      console.error('Erro Nano Banana Pro:', err);
+      throw new Error(
+        `O modelo Pro está com alta demanda no momento. Tente novamente em alguns instantes ou use o modelo Flash. (${msg.slice(0, 120)})`,
+        { cause: err }
+      );
+    }
   }
+
+  throw lastError;
 }
 
 export async function generateNanoBananaImage(
