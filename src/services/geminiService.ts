@@ -7,6 +7,7 @@ import {
   PostProductionResultSchema,
   validateOrThrow,
 } from '../schemas';
+import { supabase } from '../lib/supabase';
 
 function getAI() {
   const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
@@ -547,6 +548,8 @@ export async function analyzePostProduction(
 const KIE_API_BASE = 'https://api.kie.ai/api/v1/jobs';
 const KIE_POLL_INTERVAL_MS = 5000;
 const KIE_MAX_POLLS = 36; // 36 × 5s = 3 min
+const KIE_TEMP_BUCKET = 'input-images';
+const KIE_TEMP_FOLDER = 'kie-temp';
 
 function getKieKey(): string {
   const key = process.env.KIE_API_KEY;
@@ -554,12 +557,50 @@ function getKieKey(): string {
   return key;
 }
 
+/** Faz upload do base64 para o Storage e retorna uma signed URL pública (10 min). */
+async function uploadTempImage(base64: string): Promise<{ path: string; url: string }> {
+  const [meta, rawData] = base64.split(',');
+  const mimeMatch = meta.match(/data:([^;]+)/);
+  const mime = mimeMatch?.[1] ?? 'image/jpeg';
+  const ext = mime.split('/')[1] ?? 'jpg';
+
+  const binary = atob(rawData);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+
+  const path = `${KIE_TEMP_FOLDER}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from(KIE_TEMP_BUCKET)
+    .upload(path, blob, { contentType: mime, upsert: false });
+
+  if (uploadErr) throw new Error(`Upload temporário falhou: ${uploadErr.message}`);
+
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(KIE_TEMP_BUCKET)
+    .createSignedUrl(path, 600); // 10 minutos — suficiente para a geração
+
+  if (signErr || !signed?.signedUrl)
+    throw new Error(`Erro ao gerar URL assinada: ${signErr?.message}`);
+
+  return { path, url: signed.signedUrl };
+}
+
+/** Remove o arquivo temporário do Storage após a geração. */
+function deleteTempImage(path: string): void {
+  supabase.storage
+    .from(KIE_TEMP_BUCKET)
+    .remove([path])
+    .catch(err => console.warn('KIE.ai: falha ao remover imagem temporária:', err));
+}
+
 export async function generateNanoBananaPro(
   prompt: string,
   negativePrompt: string,
   aspectRatio: string,
   resolution: '1K' | '2K',
-  _imageRef?: string // KIE.ai aceita apenas URLs públicas; base64 não é suportado
+  imageRef?: string
 ): Promise<string> {
   const apiKey = getKieKey();
 
@@ -574,8 +615,25 @@ export async function generateNanoBananaPro(
     `- Resolução alvo: ${resolution === '2K' ? 'Ultra HD 2K' : 'Alta definição 1K'}, Aspect Ratio ${aspectRatio}\n\n` +
     `NEGATIVO ABSOLUTO (PROIBIDO): ${negativePrompt}`;
 
+  // ── Upload imagem de referência → signed URL pública para o KIE.ai ────────
+  let tempPath: string | undefined;
+  const imageInput: string[] = [];
+
+  if (imageRef) {
+    try {
+      const { path, url } = await uploadTempImage(imageRef);
+      tempPath = path;
+      imageInput.push(url);
+    } catch (uploadErr) {
+      // Falha no upload não bloqueia — gera só pelo prompt
+      console.warn(
+        'KIE.ai: falha no upload da imagem de referência, gerando sem image_input.',
+        uploadErr
+      );
+    }
+  }
+
   // ── Step 1: criar task ────────────────────────────────────────────────────
-  // image_input aceita apenas URLs públicas — base64 não é suportado pela API
   const createRes = await fetch(`${KIE_API_BASE}/createTask`, {
     method: 'POST',
     headers: {
@@ -586,6 +644,7 @@ export async function generateNanoBananaPro(
       model: 'nano-banana-pro',
       input: {
         prompt: fullPrompt,
+        ...(imageInput.length > 0 && { image_input: imageInput }),
         aspect_ratio: aspectRatio,
         resolution,
         output_format: 'png',
@@ -623,11 +682,13 @@ export async function generateNanoBananaPro(
     if (task.state === 'success') {
       const result = JSON.parse(task.resultJson as string) as { resultUrls: string[] };
       const url = result.resultUrls?.[0];
+      if (tempPath) deleteTempImage(tempPath);
       if (!url) throw new Error('KIE.ai: geração concluída mas sem URL de imagem.');
       return url;
     }
 
     if (task.state === 'fail') {
+      if (tempPath) deleteTempImage(tempPath);
       throw new Error(
         `KIE.ai geração falhou: ${task.failMsg || task.failCode || 'motivo desconhecido'}`
       );
