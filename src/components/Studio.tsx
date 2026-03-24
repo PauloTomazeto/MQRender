@@ -358,6 +358,9 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
     URL.revokeObjectURL(url);
   };
 
+  const [promptNote, setPromptNote] = useState('');
+  const [refining, setRefining] = useState(false);
+
   const handleGenerate = async () => {
     if (!scan || !image) return;
     setLoading(true);
@@ -375,6 +378,22 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
       setError(err instanceof Error ? err.message : 'Falha ao gerar prompt. Tente novamente.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefinePrompt = async () => {
+    if (!scan || !image || !promptNote.trim()) return;
+    setRefining(true);
+    setError(null);
+    try {
+      const configWithNote = { ...config, refinementNote: promptNote.trim() };
+      const promptResult = await generatePrompt(scan, configWithNote, image);
+      setResult(promptResult);
+      setPromptNote('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao refinar prompt. Tente novamente.');
+    } finally {
+      setRefining(false);
     }
   };
 
@@ -2455,6 +2474,60 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                   );
                 })}
               </div>
+            )}
+
+            {/* ── Refinamento de Prompt ── */}
+            {mode === 'promp' && (
+              <Card className="p-8 space-y-5 border-gold/20 bg-gold/5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bluegray/40 flex items-center gap-2">
+                      <RefreshCw className="w-3 h-3 text-gold" />
+                      Refinar Prompt
+                    </h3>
+                    <p className="text-[11px] text-bluegray/50 mt-1">
+                      Descreva as alterações que deseja. O prompt será regenerado mantendo toda a
+                      análise.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStep('config')}
+                    className="shrink-0 text-[10px] uppercase tracking-widest font-bold"
+                  >
+                    <Settings className="w-3 h-3 mr-1.5" />
+                    Voltar às Configurações
+                  </Button>
+                </div>
+                <textarea
+                  value={promptNote}
+                  onChange={e => setPromptNote(e.target.value)}
+                  placeholder="Ex: adicione mais detalhes sobre a iluminação lateral, mude o ângulo da câmera para 24mm, enfatize a textura do concreto..."
+                  rows={4}
+                  className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-bluegray placeholder:text-bluegray/30 focus:outline-none focus:border-gold resize-none leading-relaxed"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    variant="gold"
+                    onClick={handleRefinePrompt}
+                    disabled={!promptNote.trim() || refining}
+                    className="min-w-[160px]"
+                  >
+                    {refining ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Refinando...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Aplicar Refinamento
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </Card>
             )}
 
             <div className="flex flex-col items-center gap-8 pt-12 border-t border-black/5">

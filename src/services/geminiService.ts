@@ -520,6 +520,7 @@ export async function generatePrompt(
       [FOTORREALISMO] O prompt positivo DEVE incluir: "fotorealista, fotografia RAW, Canon EOS R5, 35mm, fotografia de interiores arquitetônica, iluminação natural, 8K, DSLR, foto real da vida real"
       [NEGATIVE OBRIGATÓRIO] O Negative Prompt DEVE incluir no mínimo: "CGI, render, 3D render, unreal engine, octane render, vray, blender, digital art, artificial lighting, studio lighting, harsh shadows, oversaturated, low quality, blurry, distorted, watermark, text, people, illustration, painting, sketch, cartoon, plastic texture, fake, synthetic, computer generated, sketchup, maquete, maquette, architectural model, clay render, wireframe, added windows, added doors, added openings, extra furniture, invented objects, hallucinated elements, curtains where there are walls, blinds on solid walls"
       ${config.mirror?.enabled ? `[ESPELHO] Espelho em: ${config.mirror.location}. Segunda imagem = reflexo.` : ''}
+      ${config.refinementNote ? `[REFINAMENTO DO USUÁRIO — PRIORIDADE MÁXIMA] O usuário solicitou as seguintes alterações específicas no prompt. Incorpore-as obrigatoriamente, mantendo todas as demais regras: "${config.refinementNote}"` : ''}
       A primeira imagem é a CENA BASE.`,
       },
       { inlineData: { mimeType: mainImage.mimeType, data: mainImage.data } },
