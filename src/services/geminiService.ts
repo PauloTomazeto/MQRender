@@ -559,7 +559,7 @@ export async function generateNanoBananaPro(
   negativePrompt: string,
   aspectRatio: string,
   resolution: '1K' | '2K',
-  imageRef?: string
+  _imageRef?: string // KIE.ai aceita apenas URLs públicas; base64 não é suportado
 ): Promise<string> {
   const apiKey = getKieKey();
 
@@ -574,12 +574,8 @@ export async function generateNanoBananaPro(
     `- Resolução alvo: ${resolution === '2K' ? 'Ultra HD 2K' : 'Alta definição 1K'}, Aspect Ratio ${aspectRatio}\n\n` +
     `NEGATIVO ABSOLUTO (PROIBIDO): ${negativePrompt}`;
 
-  const imageInput: string[] = [];
-  if (imageRef) {
-    imageInput.push(imageRef);
-  }
-
   // ── Step 1: criar task ────────────────────────────────────────────────────
+  // image_input aceita apenas URLs públicas — base64 não é suportado pela API
   const createRes = await fetch(`${KIE_API_BASE}/createTask`, {
     method: 'POST',
     headers: {
@@ -590,7 +586,6 @@ export async function generateNanoBananaPro(
       model: 'nano-banana-pro',
       input: {
         prompt: fullPrompt,
-        image_input: imageInput,
         aspect_ratio: aspectRatio,
         resolution,
         output_format: 'png',
