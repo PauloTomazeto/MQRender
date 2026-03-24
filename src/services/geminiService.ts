@@ -569,7 +569,10 @@ async function uploadTempImage(base64: string): Promise<{ path: string; url: str
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   const blob = new Blob([bytes], { type: mime });
 
-  const path = `${KIE_TEMP_FOLDER}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  // userId no path para respeitar as políticas RLS de Storage existentes
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id ?? 'anon';
+  const path = `${userId}/${KIE_TEMP_FOLDER}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
   const { error: uploadErr } = await supabase.storage
     .from(KIE_TEMP_BUCKET)
