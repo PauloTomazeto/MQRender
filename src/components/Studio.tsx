@@ -120,14 +120,36 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   const [detailImage, setDetailImage] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!generatedImg) return;
-    const link = document.createElement('a');
-    link.href = generatedImg;
-    link.download = `geracao-nano-banana-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = `mqpromp-${Date.now()}.png`;
+    // If it's already a data URL, download directly
+    if (generatedImg.startsWith('data:')) {
+      const link = document.createElement('a');
+      link.href = generatedImg;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+    // Remote URL: fetch as blob to bypass cross-origin download restriction
+    try {
+      const response = await fetch(generatedImg);
+      if (!response.ok) throw new Error('fetch failed');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // Fallback: open in new tab so user can save manually
+      window.open(generatedImg, '_blank');
+    }
   }, [generatedImg]);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Analisando Volumetria...');
