@@ -81,6 +81,12 @@ export interface Material {
   estado_conservacao?: string;
   indice_rugosidade_estimado?: number;
   notas_textura?: string;
+  // PBR Material Precision Pipeline (V-Ray Methodology)
+  pbr_diffuse?: string; // Camada base: cor dominante, textura e padrão de albedo
+  pbr_reflection?: number; // Intensidade de reflexão: 0.0 (nenhuma) a 1.0 (espelho perfeito)
+  pbr_glossiness?: number; // Nitidez da reflexão: 0.0 (difusa/fosca) a 1.0 (espéculo nítido)
+  pbr_bump?: string; // Descrição do relevo micro-superficial (poros, tramas, fissuras)
+  pbr_light_behavior?: string; // Comportamento físico da luz: como difunde, reflete e absorve luz
 }
 
 export interface LightPoint {

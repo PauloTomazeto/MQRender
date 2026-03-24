@@ -10,6 +10,12 @@ export const MaterialSchema = z.object({
   estado_conservacao: z.string().optional(),
   indice_rugosidade_estimado: z.number().optional(),
   notas_textura: z.string().optional(),
+  // PBR Material Precision Pipeline (V-Ray Methodology)
+  pbr_diffuse: z.string().optional(),
+  pbr_reflection: z.number().min(0).max(1).optional(),
+  pbr_glossiness: z.number().min(0).max(1).optional(),
+  pbr_bump: z.string().optional(),
+  pbr_light_behavior: z.string().optional(),
 });
 
 // ─── ScanResult ──────────────────────────────────────────────────────────────

@@ -56,6 +56,13 @@ DISCRIMINAÇÃO DE MATERIAIS (MANDATÓRIO):
 - MDF/PAINÉIS: Superfícies sólidas, foscas, acetinadas ou com brilho leve. Painéis de fundo de penteadeiras, laterais de armários e frentes de gaveta são quase sempre MDF/Laca.
 - CONSISTÊNCIA DE MÓVEL: Se o móvel (ex: penteadeira, guarda-roupa) é feito de um material X, todas as suas partes estruturais são X. Só classifique como espelho se houver uma moldura clara ou se a reflexão for indiscutível.
 - Na dúvida entre MDF Branco e Espelho em uma superfície vertical de móvel, prefira MDF Branco, a menos que veja o reflexo da câmera ou do ambiente oposto.
+
+TOOL-MAT — PIPELINE DE PRECISÃO DE MATERIAIS (Metodologia PBR/V-Ray):
+Para cada material identificado, decomponha em 4 camadas físicas obrigatórias:
+- CAMADA DIFFUSE: Descreva a cor base exata (tom, saturação, temperatura de cor), padrão de textura (veios, tramado, poros, manchas), e albedo percebido. Ex: "carvalho natural, veios longitudinais castanho-mel sobre fundo bege-dourado, albedo médio-quente".
+- CAMADA REFLECTION (pbr_reflection 0.0-1.0): Calcule a intensidade de reflexão. Metais polidos → 0.9+. Vidro → 0.85. Madeira envernizada → 0.4. Concreto aparente → 0.05. Tecido → 0.02. Preencha pbr_glossiness: reflexão nítida (>0.8) ou difusa (<0.4).
+- CAMADA BUMP: Identifique micro-relevos da superfície — poros, fissuras, ranhuras, tramado, espessura de pintura. Descreva o que sobe (branco no mapa) e o que desce (preto). Ex: "juntas de rejunte afundam 2mm, superfície da cerâmica levemente convexa".
+- COMPORTAMENTO DE LUZ (pbr_light_behavior): Como esse material reage fisicamente à luz da cena — absorção, difusão lambertiana, reflexão especular, translucidez, subsurface scattering, anisotropia. Ex: "difunde luz de forma lambertiana uniforme, absorve 70% no espectro visível, sem componente especular".
 `;
 
 async function callGemini(contents: any, schema?: any): Promise<any> {
@@ -202,7 +209,7 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
         role: 'user',
         parts: [
           {
-            text: "Analise esta imagem arquitetônica de forma objetiva e rápida. Se houver pessoas, ignore detalhes delas e foque na arquitetura. \n\nATENÇÃO ESPECIAL: Diferencie rigorosamente entre espelhos e painéis de MDF/Laca. Espelhos devem ter reflexos nítidos e perfeitos. Painéis brancos ou acetinados (como fundos de penteadeira ou portas de armário sem reflexo claro) são MDF, não espelhos. Se a superfície não mostra o que está 'atrás' da câmera de forma nítida, é MDF. Garanta a consistência de materiais em todo o mobiliário. Preencha o JSON seguindo o esquema.",
+            text: "Analise esta imagem arquitetônica de forma objetiva e rápida. Se houver pessoas, ignore detalhes delas e foque na arquitetura. \n\nATENÇÃO ESPECIAL: Diferencie rigorosamente entre espelhos e painéis de MDF/Laca. Espelhos devem ter reflexos nítidos e perfeitos. Painéis brancos ou acetinados (como fundos de penteadeira ou portas de armário sem reflexo claro) são MDF, não espelhos. Se a superfície não mostra o que está 'atrás' da câmera de forma nítida, é MDF. Garanta a consistência de materiais em todo o mobiliário.\n\nPIPELINE PBR OBRIGATÓRIO: Para cada material, preencha as camadas físicas:\n- pbr_diffuse: descrição detalhada da cor base, padrão de textura e albedo percebido\n- pbr_reflection (0.0-1.0): intensidade de reflexão (ex: aço inox polido=0.95, madeira fosca=0.08)\n- pbr_glossiness (0.0-1.0): nitidez da reflexão (>0.8=espéculo nítido, <0.3=reflexão difusa)\n- pbr_bump: descrição do micro-relevo da superfície (poros, juntas, ranhuras, relevos)\n- pbr_light_behavior: comportamento físico frente à luz da cena (difusão lambertiana, especular, translucidez, absorção %)\n\nPreencha o JSON seguindo o esquema.",
           },
           { inlineData: { mimeType: imageData.mimeType, data: imageData.data } },
         ],
@@ -232,6 +239,12 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
               estado_conservacao: { type: Type.STRING },
               indice_rugosidade_estimado: { type: Type.NUMBER },
               notas_textura: { type: Type.STRING },
+              // PBR Material Precision Pipeline
+              pbr_diffuse: { type: Type.STRING },
+              pbr_reflection: { type: Type.NUMBER },
+              pbr_glossiness: { type: Type.NUMBER },
+              pbr_bump: { type: Type.STRING },
+              pbr_light_behavior: { type: Type.STRING },
             },
             required: ['elemento', 'acabamento', 'reflectancia'],
           },
@@ -378,6 +391,12 @@ export async function generatePrompt(
       [ANTI-ALUCINAÇÃO DE TEXTURA] O prompt DEVE conter: "Se uma superfície for plana, branca ou cinza sem textura na referência (ex: paredes de Sketchup), mantenha-a como PAREDE LISA E LIMPA. É terminantemente proibido transformar paredes lisas em cortinas, persianas, painéis ripados ou qualquer outra textura não existente."
       [CONSISTÊNCIA DE MATERIAIS] O prompt DEVE conter: "Diferencie rigorosamente entre espelhos e painéis de MDF. Se a referência mostra um painel branco ou cinza sem reflexo nítido (como o fundo de uma penteadeira), descreva-o como MDF ou Laca, NUNCA como espelho. Garanta que todas as partes de um mesmo móvel mantenham o mesmo material, a menos que haja um espelho com moldura clara."
       ${config.materialFidelity ? '[MATERIAIS] Descreva cada material visível detalhadamente (ex: armários em MDF oliva, bancada em granilite cinza). O prompt DEVE conter: "Mantenha fidelidade material absoluta. Não troque cores ou acabamentos da referência."' : '[MATERIAIS] Variações sutis de materiais são permitidas.'}
+      [PIPELINE PBR DE MATERIAIS — OBRIGATÓRIO] Para cada material identificado no scan, o prompt DEVE descrever as 4 camadas físicas com riqueza fotográfica:
+      1. DIFFUSE (Base): Descreva a cor base, padrão de textura e qualidade de albedo com vocabulário fotográfico preciso. Ex: "parede em cimento queimado cinza grafite com variação tonal sutil, albedo baixo-médio, textura homogênea com micro-poros visíveis".
+      2. REFLECTION (Reflexão): Descreva o comportamento especular com intensidade calibrada. Ex: "bancada em granito preto absoluto com reflexo especular nítido de alta intensidade (pbr_reflection ≈ 0.75), captando o reflexo invertido das luminárias embutidas acima".
+      3. GLOSSINESS (Nitidez da Reflexão): Diferencie reflexão nítida vs. difusa. Ex: "piso em porcelanato 120×60cm polido com reflexo sharp de alta glossiness (≈0.90), espelhando o volume arquitetônico oposto com leve distorção de perspectiva" OU "madeira de carvalho escovado com reflexão satin difusa (glossiness ≈0.35), sem imagem refletida definida".
+      4. BUMP (Micro-relevo): Descreva a textura tridimensional da superfície perceptível ao toque e à luz rasante. Ex: "superfície em concreto aparente com micro-relevo de fôrma de madeira (juntas a cada 60cm), poros de bolhas de ar e variação de profundidade de 0.5-2mm criando sombra rasante".
+      Os materiais identificados no scan com dados PBR são: ${JSON.stringify(scan.materials?.map((m: any) => ({ elemento: m.elemento, acabamento: m.acabamento, reflectancia: m.reflectancia, pbr_diffuse: m.pbr_diffuse, pbr_reflection: m.pbr_reflection, pbr_glossiness: m.pbr_glossiness, pbr_bump: m.pbr_bump, pbr_light_behavior: m.pbr_light_behavior })) ?? [])}
       ${config.accessoryControl === 'maintain' ? '[ACESSÓRIOS] O prompt DEVE conter: "Retrate apenas objetos presentes na referência. Proibido adicionar ou inventar objetos decorativos, vasos, plantas, quadros ou qualquer item não existente na cena original."' : '[ACESSÓRIOS] Pode adornar a cena livremente.'}
       [FOTORREALISMO] O prompt positivo DEVE incluir: "fotorealista, fotografia RAW, Canon EOS R5, 35mm, fotografia de interiores arquitetônica, iluminação natural, 8K, DSLR, foto real da vida real"
       [NEGATIVE OBRIGATÓRIO] O Negative Prompt DEVE incluir no mínimo: "CGI, render, 3D render, unreal engine, octane render, vray, blender, digital art, artificial lighting, studio lighting, harsh shadows, oversaturated, low quality, blurry, distorted, watermark, text, people, illustration, painting, sketch, cartoon, plastic texture, fake, synthetic, computer generated, sketchup, maquete, maquette, architectural model, clay render, wireframe, added windows, added doors, added openings, extra furniture, invented objects, hallucinated elements, curtains where there are walls, blinds on solid walls"
