@@ -152,25 +152,57 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     const rawText = await res.text();
     if (!res.ok) throw new Error(`KIE API HTTP ${res.status}: ${rawText.slice(0, 200)}`);
 
-    // KIE API may return SSE format even with stream: false
+    // KIE API returns SSE format — parse all event/data lines
     const trimmed = rawText.trimStart();
     if (trimmed.startsWith('event:') || trimmed.startsWith('data:')) {
       const lines = rawText.split('\n');
+      const textDeltas: string[] = [];
+
       for (const line of lines) {
         if (!line.startsWith('data:')) continue;
         const jsonStr = line.slice(5).trim();
         if (jsonStr === '[DONE]') continue;
         try {
           const parsed = JSON.parse(jsonStr);
-          if (parsed.error ?? parsed.message) {
-            throw new Error(`KIE API erro: ${parsed.error ?? parsed.message}`);
-          }
-          if (parsed.output ?? parsed.status) return parsed;
+
+          // API-level error inside SSE
+          if (parsed.error) throw new Error(`KIE API erro: ${parsed.error}`);
+
+          // Format A: top-level output (e.g. event: res)
+          if (parsed.output) return parsed;
+
+          // Format B: response.completed → full response nested in parsed.response
+          if (parsed.response?.output) return parsed.response;
+
+          // Format C: top-level status without output (rare)
+          if (parsed.status === 'completed' && !parsed.output) continue;
+
+          // Format D: streaming text delta
+          if (typeof parsed.delta === 'string') textDeltas.push(parsed.delta);
+          if (typeof parsed.text === 'string') textDeltas.push(parsed.text);
         } catch (e) {
           if ((e as Error).message?.startsWith('KIE API erro')) throw e;
         }
       }
-      throw new Error('KIE API: resposta SSE sem dados válidos.');
+
+      // Assembled from streaming deltas
+      if (textDeltas.length > 0) {
+        const fullText = textDeltas.join('');
+        return {
+          output: [
+            {
+              type: 'message',
+              content: [{ type: 'output_text', text: fullText }],
+              status: 'completed',
+            },
+          ],
+          status: 'completed',
+        };
+      }
+
+      // Debug: expose raw SSE so we can diagnose unknown formats
+      console.error('KIE SSE raw:', rawText.slice(0, 800));
+      throw new Error(`KIE API: formato SSE desconhecido. Início: ${rawText.slice(0, 120)}`);
     }
 
     return JSON.parse(rawText);
