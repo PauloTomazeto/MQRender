@@ -56,6 +56,10 @@ export interface Profile {
   image_quota_monthly: number;
   current_month_usage: number;
   quota_reset_at: string | null;
+  credits_plan: number;
+  credits_addon: number;
+  credits_used: number;
+  credits_reset_at: string | null;
   created_at: string;
   updated_at: string;
   last_login: string | null;
@@ -69,6 +73,7 @@ export interface SubscriptionPlan {
   description: string | null;
   features: string[];
   image_monthly_quota: number | null;
+  credits_monthly: number;
   is_active: boolean;
   created_at: string;
 }
@@ -350,6 +355,29 @@ export interface MoveOutputOption {
   intensity: string;
 }
 
+// Credit system
+export interface CreditConfig {
+  id: number;
+  model: string;
+  resolution: string | null;
+  kie_base_cost: number;
+  markup_pct: number;
+  our_cost: number;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export interface CreditTransaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  type: 'plan_allocation' | 'addon_purchase' | 'consumption' | 'admin_adjustment' | 'cycle_reset';
+  model: string | null;
+  resolution: string | null;
+  description: string | null;
+  created_at: string;
+}
+
 export interface AiCallLog {
   id: string;
   user_id: string;
@@ -480,6 +508,16 @@ export interface Database {
         Insert: Omit<AiCallLog, 'id' | 'created_at'>;
         Update: Partial<AiCallLog>;
       };
+      credit_config: {
+        Row: CreditConfig;
+        Insert: Omit<CreditConfig, 'id'>;
+        Update: Partial<CreditConfig>;
+      };
+      credit_transactions: {
+        Row: CreditTransaction;
+        Insert: Omit<CreditTransaction, 'id' | 'created_at'>;
+        Update: never;
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -487,6 +525,18 @@ export interface Database {
       consume_image_credit: { Args: { p_user_id: string }; Returns: void };
       is_admin: { Args: Record<never, never>; Returns: boolean };
       get_session_summary: { Args: { p_session_id: string }; Returns: Json };
+      check_credits: { Args: { p_user_id: string; p_cost: number }; Returns: boolean };
+      consume_credits: {
+        Args: { p_user_id: string; p_model: string; p_resolution: string };
+        Returns: number;
+      };
+      add_addon_credits: { Args: { p_user_id: string }; Returns: void };
+      reset_user_credits: { Args: { p_user_id: string }; Returns: void };
+      admin_adjust_credits: {
+        Args: { p_user_id: string; p_amount: number; p_description: string };
+        Returns: void;
+      };
+      get_user_credit_status: { Args: { p_user_id: string }; Returns: Json };
     };
     Enums: Record<string, never>;
   };

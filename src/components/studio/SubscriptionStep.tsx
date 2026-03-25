@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Zap, Star, Building2, Check, Mail, ImagePlus } from 'lucide-react';
+import { Zap, Star, Building2, Check, Mail, ImagePlus, Coins } from 'lucide-react';
 import { Button, Card, Badge } from '../UI';
 
 export function SubscriptionStep() {
@@ -51,6 +51,10 @@ export function SubscriptionStep() {
                 </li>
               ))}
             </ul>
+            <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-bluegray/5 border border-bluegray/10">
+              <Coins className="w-4 h-4 text-bluegray/50 flex-shrink-0" />
+              <span className="text-sm font-semibold text-bluegray/70">1.000 créditos / mês</span>
+            </div>
           </div>
           <Button variant="outline" className="mt-8 w-full py-6">
             Assinar Agora
@@ -77,18 +81,19 @@ export function SubscriptionStep() {
               </span>
             </div>
             <ul className="space-y-4">
-              {[
-                'Tudo do plano Basic',
-                '100 Imagens Geradas por Mês',
-                'Prioridade no Processamento',
-                'Suporte Prioritário',
-              ].map((feature, i) => (
-                <li key={i} className="flex items-center gap-3 text-sm text-bluegray/70">
-                  <Check className="w-4 h-4 text-gold" />
-                  {feature}
-                </li>
-              ))}
+              {['Tudo do plano Basic', 'Prioridade no Processamento', 'Suporte Prioritário'].map(
+                (feature, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm text-bluegray/70">
+                    <Check className="w-4 h-4 text-gold" />
+                    {feature}
+                  </li>
+                )
+              )}
             </ul>
+            <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gold/10 border border-gold/30">
+              <Coins className="w-4 h-4 text-gold flex-shrink-0" />
+              <span className="text-sm font-bold text-gold">2.000 créditos / mês</span>
+            </div>
           </div>
           <Button variant="gold" className="mt-8 w-full py-6">
             Assinar Agora
@@ -136,7 +141,7 @@ export function SubscriptionStep() {
       <div className="mt-20 max-w-4xl mx-auto">
         <div className="text-center mb-10">
           <h2 className="text-2xl font-display font-bold text-bluegray">
-            Precisa de mais imagens?
+            Precisa de mais créditos?
           </h2>
           <p className="text-sm text-bluegray/60">Disponível para todos os planos.</p>
         </div>
@@ -146,7 +151,7 @@ export function SubscriptionStep() {
               <ImagePlus className="w-8 h-8 text-gold" />
             </div>
             <div>
-              <h4 className="text-xl font-bold text-bluegray">Pacote de 100 Imagens</h4>
+              <h4 className="text-xl font-bold text-bluegray">+1.000 créditos adicionais</h4>
               <p className="text-sm text-bluegray/60">
                 Adicione créditos extras à sua conta instantaneamente.
               </p>

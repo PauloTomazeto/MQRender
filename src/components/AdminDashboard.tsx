@@ -61,13 +61,22 @@ import {
   getLogStats,
   getActiveSessions,
   getReportKPIs,
+  getAllUserCredits,
+  getCreditConfig,
+  updateCreditConfig,
+  adminAdjustUserCredits,
+  adminAddAddonToUser,
+  getCreditTransactions,
   type AdminUser,
   type AdminLog,
   type PlanStat,
   type OverviewStats,
   type WeeklyActivity,
   type RecentActivityItem,
+  type UserCreditInfo,
+  type CreditConfigRow,
 } from '../services/adminService';
+import { getUserCreditStatus, type CreditStatus } from '../services/creditService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +84,7 @@ type AdminTab =
   | 'overview'
   | 'users'
   | 'subscriptions'
+  | 'credits'
   | 'security'
   | 'logs'
   | 'reports'
@@ -143,11 +153,18 @@ function Skeleton({ className }: { className?: string }) {
 export function AdminDashboard({ onExit }: { onExit: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [myCredits, setMyCredits] = useState<CreditStatus | null>(null);
+  useEffect(() => {
+    getUserCreditStatus()
+      .then(setMyCredits)
+      .catch(() => {});
+  }, []);
 
   const nav = [
     { id: 'overview', label: 'Visão Geral', icon: TrendingUp },
     { id: 'users', label: 'Usuários', icon: Users },
     { id: 'subscriptions', label: 'Assinaturas', icon: Package },
+    { id: 'credits', label: 'Créditos', icon: Zap },
     { id: 'security', label: 'TOOL-SEC', icon: ShieldAlert },
     { id: 'logs', label: 'Logs de IA', icon: Terminal },
     { id: 'reports', label: 'Relatórios', icon: BarChart2 },
@@ -247,6 +264,14 @@ export function AdminDashboard({ onExit }: { onExit: () => void }) {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {myCredits != null && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200">
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
+                  {myCredits.credits_available.toLocaleString('pt-BR')} créditos
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Sistema Ativo
@@ -266,6 +291,7 @@ export function AdminDashboard({ onExit }: { onExit: () => void }) {
               {activeTab === 'overview' && <OverviewTab key="overview" />}
               {activeTab === 'users' && <UsersTab key="users" />}
               {activeTab === 'subscriptions' && <SubscriptionsTab key="subscriptions" />}
+              {activeTab === 'credits' && <CreditsTab key="credits" />}
               {activeTab === 'security' && <SecurityTab key="security" />}
               {activeTab === 'logs' && <LogsTab key="logs" />}
               {activeTab === 'reports' && <ReportsTab key="reports" />}
@@ -1434,6 +1460,675 @@ function ReportsTab() {
           <p className="text-xs text-bluegray/30">Os dados acima são atualizados em tempo real.</p>
         </div>
       </Card>
+    </motion.div>
+  );
+}
+
+// ─── Credits ──────────────────────────────────────────────────────────────────
+
+function creditAvailableColor(available: number, total: number): string {
+  if (total <= 0) return 'text-bluegray/40';
+  const pct = (available / total) * 100;
+  if (pct > 50) return 'text-emerald-600 font-bold';
+  if (pct >= 10) return 'text-amber-600 font-bold';
+  return 'text-red-500 font-bold';
+}
+
+function creditAvailableBg(available: number, total: number): string {
+  if (total <= 0) return 'bg-black/5';
+  const pct = (available / total) * 100;
+  if (pct > 50) return 'bg-emerald-50 border-emerald-100';
+  if (pct >= 10) return 'bg-amber-50 border-amber-100';
+  return 'bg-red-50 border-red-100';
+}
+
+function txTypeBadge(type: string) {
+  const map: Record<string, string> = {
+    plan_allocation: 'bg-blue-50 text-blue-600 border-blue-100',
+    addon_purchase: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    consumption: 'bg-orange-50 text-orange-600 border-orange-100',
+    admin_adjustment: 'bg-purple-50 text-purple-600 border-purple-100',
+    cycle_reset: 'bg-bluegray/5 text-bluegray/50 border-black/5',
+  };
+  return map[type] ?? 'bg-black/5 text-bluegray/50 border-black/5';
+}
+
+function AdjustModal({
+  user,
+  onClose,
+  onDone,
+}: {
+  user: UserCreditInfo;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const submit = async () => {
+    const n = parseInt(amount, 10);
+    if (isNaN(n) || !description.trim()) return;
+    setSaving(true);
+    await adminAdjustUserCredits(user.user_id, n, description.trim());
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => {
+      onClose();
+      onDone();
+    }, 700);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 10 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 10 }}
+        className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm p-8 border border-black/5"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display font-bold text-xl text-bluegray">Ajustar Créditos</h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-black/5 text-bluegray/40 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4 rounded-2xl bg-offwhite mb-6">
+          <p className="font-bold text-sm text-bluegray">{user.name ?? '—'}</p>
+          <p className="text-xs text-bluegray/40">{user.email}</p>
+          <p className="text-xs text-bluegray/50 mt-1">
+            Disponível atual:{' '}
+            <span className="font-bold">{user.credits_available.toLocaleString('pt-BR')}</span>
+          </p>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
+              Quantidade (use negativo para remover)
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder="ex: 500 ou -200"
+              className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm font-semibold text-bluegray outline-none focus:ring-2 focus:ring-gold/20"
+            />
+          </div>
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
+              Descrição
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="ex: Compensação por erro"
+              className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm text-bluegray outline-none focus:ring-2 focus:ring-gold/20"
+            />
+          </div>
+          <Button
+            variant="gold"
+            className="w-full py-3 gap-2"
+            onClick={submit}
+            disabled={saving || !amount || !description.trim()}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : saved ? (
+              <>
+                <Check className="w-4 h-4" /> Ajustado!
+              </>
+            ) : (
+              'Confirmar Ajuste'
+            )}
+          </Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function CreditsTab() {
+  const { data: users, loading: loadUsers, reload: reloadUsers } = useAsync(getAllUserCredits);
+  const { data: config, loading: loadConfig, reload: reloadConfig } = useAsync(getCreditConfig);
+  const {
+    data: transactions,
+    loading: loadTx,
+    reload: reloadTx,
+  } = useAsync(() => getCreditTransactions(undefined, 50));
+
+  const [search, setSearch] = useState('');
+  const [editRow, setEditRow] = useState<number | null>(null);
+  const [editValues, setEditValues] = useState<{
+    kie_base_cost: string;
+    markup_pct: string;
+    is_active: boolean;
+  }>({ kie_base_cost: '', markup_pct: '', is_active: true });
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [adjustUser, setAdjustUser] = useState<UserCreditInfo | null>(null);
+  const [addingAddon, setAddingAddon] = useState<string | null>(null);
+
+  const filteredUsers = (users ?? []).filter(u => {
+    const q = search.toLowerCase();
+    return (u.name?.toLowerCase().includes(q) ?? false) || u.email.toLowerCase().includes(q);
+  });
+
+  const totalDistributed = (users ?? []).reduce(
+    (acc, u) => acc + u.credits_plan + u.credits_addon,
+    0
+  );
+  const totalUsed = (users ?? []).reduce((acc, u) => acc + u.credits_used, 0);
+  const totalAvailable = (users ?? []).reduce((acc, u) => acc + u.credits_available, 0);
+
+  const startEdit = (row: CreditConfigRow) => {
+    setEditRow(row.id);
+    setEditValues({
+      kie_base_cost: String(row.kie_base_cost),
+      markup_pct: String(row.markup_pct),
+      is_active: row.is_active,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditRow(null);
+  };
+
+  const saveConfig = async (id: number) => {
+    setSavingConfig(true);
+    const kbc = parseFloat(editValues.kie_base_cost) || 0;
+    const mkp = parseFloat(editValues.markup_pct) || 0;
+    const ourCost = Math.ceil((kbc * mkp) / 100);
+    await updateCreditConfig(id, {
+      kie_base_cost: kbc,
+      markup_pct: mkp,
+      our_cost: ourCost,
+      is_active: editValues.is_active,
+    });
+    setSavingConfig(false);
+    setEditRow(null);
+    reloadConfig();
+  };
+
+  const handleAddAddon = async (userId: string) => {
+    setAddingAddon(userId);
+    await adminAddAddonToUser(userId);
+    setAddingAddon(null);
+    reloadUsers();
+    reloadTx();
+  };
+
+  const reload = () => {
+    reloadUsers();
+    reloadConfig();
+    reloadTx();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -12 }}
+      className="space-y-8"
+    >
+      <TabHeader title="Créditos" subtitle="Gestão de créditos, custos e transações.">
+        <button
+          onClick={reload}
+          className="p-2 rounded-xl hover:bg-black/5 text-bluegray/40 transition-colors"
+          title="Atualizar"
+        >
+          <RefreshCw
+            className={cn('w-4 h-4', (loadUsers || loadConfig || loadTx) && 'animate-spin')}
+          />
+        </button>
+      </TabHeader>
+
+      {/* Top stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard
+          label="Total Distribuído"
+          value={totalDistributed.toLocaleString('pt-BR')}
+          icon={Zap}
+          color="text-blue-500"
+          bg="bg-blue-50"
+          loading={loadUsers}
+        />
+        <StatCard
+          label="Total Consumido"
+          value={totalUsed.toLocaleString('pt-BR')}
+          icon={Activity}
+          color="text-[#a06f5d]"
+          bg="bg-gold/10"
+          loading={loadUsers}
+        />
+        <StatCard
+          label="Total Disponível"
+          value={totalAvailable.toLocaleString('pt-BR')}
+          icon={CheckCircle2}
+          color="text-emerald-600"
+          bg="bg-emerald-50"
+          loading={loadUsers}
+        />
+      </div>
+
+      {/* Credit Config */}
+      <Card className="border border-black/5 shadow-sm bg-white overflow-hidden">
+        <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between">
+          <div>
+            <h3 className="font-display font-bold text-bluegray">Configuração de Custos</h3>
+            <p className="text-[10px] text-bluegray/40 font-medium uppercase tracking-widest mt-0.5">
+              Custo por modelo / resolução
+            </p>
+          </div>
+        </div>
+        {loadConfig ? (
+          <Skeleton className="h-32 m-6" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-offwhite border-b border-black/5">
+                  {[
+                    'Modelo',
+                    'Resolução',
+                    'KIE Base Cost',
+                    'Markup %',
+                    'Nosso Custo',
+                    'Ativo',
+                    '',
+                  ].map(h => (
+                    <th
+                      key={h}
+                      className="px-5 py-4 text-[9px] font-black uppercase tracking-[0.15em] text-bluegray/40"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5">
+                {(config ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="text-center py-10 text-sm text-bluegray/30">
+                      Nenhuma configuração encontrada
+                    </td>
+                  </tr>
+                )}
+                {(config ?? []).map(row => {
+                  const isEditing = editRow === row.id;
+                  const previewOurCost = isEditing
+                    ? Math.ceil(
+                        ((parseFloat(editValues.kie_base_cost) || 0) *
+                          (parseFloat(editValues.markup_pct) || 0)) /
+                          100
+                      )
+                    : row.our_cost;
+                  return (
+                    <tr key={row.id} className="hover:bg-offwhite/40 transition-colors">
+                      <td className="px-5 py-4 text-xs font-bold text-bluegray">{row.model}</td>
+                      <td className="px-5 py-4 text-xs text-bluegray/60">
+                        {row.resolution ?? '—'}
+                      </td>
+                      <td className="px-5 py-4">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={editValues.kie_base_cost}
+                            onChange={e =>
+                              setEditValues(v => ({ ...v, kie_base_cost: e.target.value }))
+                            }
+                            className="w-24 px-3 py-1.5 rounded-xl bg-offwhite border border-black/5 text-xs font-mono text-bluegray outline-none focus:ring-2 focus:ring-gold/20"
+                          />
+                        ) : (
+                          <span className="font-mono text-xs text-bluegray/60">
+                            {row.kie_base_cost}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={editValues.markup_pct}
+                            onChange={e =>
+                              setEditValues(v => ({ ...v, markup_pct: e.target.value }))
+                            }
+                            className="w-20 px-3 py-1.5 rounded-xl bg-offwhite border border-black/5 text-xs font-mono text-bluegray outline-none focus:ring-2 focus:ring-gold/20"
+                          />
+                        ) : (
+                          <span className="font-mono text-xs text-bluegray/60">
+                            {row.markup_pct}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={cn(
+                            'font-mono text-xs font-bold',
+                            isEditing ? 'text-[#a06f5d]' : 'text-bluegray'
+                          )}
+                        >
+                          {previewOurCost}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        {isEditing ? (
+                          <button
+                            onClick={() => setEditValues(v => ({ ...v, is_active: !v.is_active }))}
+                            className={cn(
+                              'relative w-8 h-5 rounded-full transition-all',
+                              editValues.is_active ? 'gold-gradient' : 'bg-bluegray/15'
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all',
+                                editValues.is_active ? 'left-3.5' : 'left-0.5'
+                              )}
+                            />
+                          </button>
+                        ) : (
+                          <span
+                            className={cn(
+                              'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full',
+                              row.is_active
+                                ? 'bg-emerald-50 text-emerald-600'
+                                : 'bg-red-50 text-red-400'
+                            )}
+                          >
+                            {row.is_active ? 'Sim' : 'Não'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => saveConfig(row.id)}
+                              disabled={savingConfig}
+                              className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest bg-gold/10 hover:bg-gold/20 text-[#a06f5d] px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
+                            >
+                              {savingConfig ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                              Salvar
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 hover:text-bluegray/70 px-3 py-1.5 rounded-xl hover:bg-black/5 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEdit(row)}
+                            className="text-[9px] font-black uppercase tracking-widest text-[#a06f5d] hover:underline"
+                          >
+                            Editar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Users Credits */}
+      <Card className="border border-black/5 shadow-sm bg-white overflow-hidden">
+        <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-display font-bold text-bluegray">Créditos por Usuário</h3>
+            <p className="text-[10px] text-bluegray/40 font-medium uppercase tracking-widest mt-0.5">
+              {filteredUsers.length} usuários
+            </p>
+          </div>
+          <div className="relative shrink-0 w-64">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-bluegray/30" />
+            <input
+              type="text"
+              placeholder="Filtrar por e-mail ou nome..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-offwhite border border-black/5 text-xs focus:outline-none focus:ring-2 focus:ring-gold/20 text-bluegray"
+            />
+          </div>
+        </div>
+        {loadUsers ? (
+          <Skeleton className="h-48 m-6" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-offwhite border-b border-black/5">
+                  {[
+                    'Usuário',
+                    'Plano',
+                    'Créditos Plano',
+                    'Addon',
+                    'Usado',
+                    'Disponível',
+                    'Reset em',
+                    'Ações',
+                  ].map(h => (
+                    <th
+                      key={h}
+                      className="px-5 py-4 text-[9px] font-black uppercase tracking-[0.15em] text-bluegray/40 whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5">
+                {filteredUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-center py-12 text-sm text-bluegray/30">
+                      Nenhum usuário encontrado
+                    </td>
+                  </tr>
+                )}
+                {filteredUsers.map(u => {
+                  const total = u.credits_plan + u.credits_addon;
+                  return (
+                    <tr key={u.user_id} className="hover:bg-offwhite/40 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full gold-gradient flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0">
+                            {(u.name ?? u.email)
+                              .split(' ')
+                              .slice(0, 2)
+                              .map(n => n[0].toUpperCase())
+                              .join('')}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-bluegray leading-none mb-0.5">
+                              {u.name ?? '—'}
+                            </p>
+                            <p className="text-[11px] text-bluegray/40">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <Badge
+                          className={cn(
+                            'text-[9px] font-black uppercase tracking-widest',
+                            planColor(u.subscription_tier)
+                          )}
+                        >
+                          {u.subscription_tier}
+                        </Badge>
+                      </td>
+                      <td className="px-5 py-4 font-mono text-xs text-bluegray/70">
+                        {u.credits_plan.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="px-5 py-4 font-mono text-xs text-bluegray/70">
+                        {u.credits_addon.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="px-5 py-4 font-mono text-xs text-bluegray/70">
+                        {u.credits_used.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={cn(
+                            'font-mono text-xs px-2 py-1 rounded-xl border',
+                            creditAvailableBg(u.credits_available, total),
+                            creditAvailableColor(u.credits_available, total)
+                          )}
+                        >
+                          {u.credits_available.toLocaleString('pt-BR')}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-xs text-bluegray/40 whitespace-nowrap">
+                        {u.credits_reset_at ? fmtDate(u.credits_reset_at) : '—'}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleAddAddon(u.user_id)}
+                            disabled={addingAddon === u.user_id}
+                            title="+1000 créditos addon"
+                            className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 px-2.5 py-1.5 rounded-xl transition-colors disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {addingAddon === u.user_id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Zap className="w-3 h-3" />
+                            )}
+                            +1000
+                          </button>
+                          <button
+                            onClick={() => setAdjustUser(u)}
+                            className="text-[9px] font-black uppercase tracking-widest bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-100 px-2.5 py-1.5 rounded-xl transition-colors whitespace-nowrap"
+                          >
+                            Ajustar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Recent Transactions */}
+      <Card className="border border-black/5 shadow-sm bg-white overflow-hidden">
+        <div className="px-6 py-4 border-b border-black/5">
+          <h3 className="font-display font-bold text-bluegray">Transações Recentes</h3>
+          <p className="text-[10px] text-bluegray/40 font-medium uppercase tracking-widest mt-0.5">
+            Últimas 50 transações
+          </p>
+        </div>
+        {loadTx ? (
+          <Skeleton className="h-48 m-6" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-offwhite border-b border-black/5">
+                  {['Data', 'Usuário', 'Tipo', 'Quantidade', 'Modelo', 'Descrição'].map(h => (
+                    <th
+                      key={h}
+                      className="px-5 py-4 text-[9px] font-black uppercase tracking-[0.15em] text-bluegray/40 whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5">
+                {(transactions ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-12 text-sm text-bluegray/30">
+                      Nenhuma transação encontrada
+                    </td>
+                  </tr>
+                )}
+                {(transactions ?? []).map((tx: any, i: number) => (
+                  <tr key={tx.id ?? i} className="hover:bg-offwhite/40 transition-colors">
+                    <td className="px-5 py-4 font-mono text-xs text-bluegray/50 whitespace-nowrap">
+                      {tx.created_at
+                        ? new Date(tx.created_at).toLocaleString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—'}
+                    </td>
+                    <td className="px-5 py-4 text-xs text-bluegray/60 max-w-[160px] truncate">
+                      {tx.user_email ?? tx.user_id ?? '—'}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={cn(
+                          'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border',
+                          txTypeBadge(tx.type ?? tx.transaction_type ?? '')
+                        )}
+                      >
+                        {(tx.type ?? tx.transaction_type ?? '—').replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={cn(
+                          'font-mono text-xs font-bold',
+                          (tx.amount ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'
+                        )}
+                      >
+                        {(tx.amount ?? 0) >= 0 ? '+' : ''}
+                        {(tx.amount ?? 0).toLocaleString('pt-BR')}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-xs text-bluegray/50">{tx.model ?? '—'}</td>
+                    <td className="px-5 py-4 text-xs text-bluegray/60 max-w-[200px] truncate">
+                      {tx.description ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-5 py-3 border-t border-black/5 flex items-center gap-2 text-[10px] font-bold text-emerald-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Dados em tempo real
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <AnimatePresence>
+        {adjustUser && (
+          <AdjustModal
+            user={adjustUser}
+            onClose={() => setAdjustUser(null)}
+            onDone={() => {
+              reloadUsers();
+              reloadTx();
+            }}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

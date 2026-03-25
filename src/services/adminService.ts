@@ -419,6 +419,115 @@ export async function getActiveSessions() {
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
+// =============================================================================
+// CRÉDITOS — ADMIN
+// =============================================================================
+
+export interface UserCreditInfo {
+  user_id: string;
+  email: string;
+  name: string | null;
+  subscription_tier: string;
+  credits_plan: number;
+  credits_addon: number;
+  credits_used: number;
+  credits_available: number;
+  credits_reset_at: string | null;
+}
+
+export interface CreditConfigRow {
+  id: number;
+  model: string;
+  resolution: string | null;
+  kie_base_cost: number;
+  markup_pct: number;
+  our_cost: number;
+  is_active: boolean;
+}
+
+export async function getAllUserCredits(): Promise<UserCreditInfo[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      'id, email, name, subscription_tier, credits_plan, credits_addon, credits_used, credits_reset_at'
+    )
+    .order('credits_used', { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((p: any) => ({
+    user_id: p.id,
+    email: p.email,
+    name: p.name,
+    subscription_tier: p.subscription_tier,
+    credits_plan: p.credits_plan ?? 0,
+    credits_addon: p.credits_addon ?? 0,
+    credits_used: p.credits_used ?? 0,
+    credits_available: (p.credits_plan ?? 0) + (p.credits_addon ?? 0) - (p.credits_used ?? 0),
+    credits_reset_at: p.credits_reset_at,
+  }));
+}
+
+export async function getCreditConfig(): Promise<CreditConfigRow[]> {
+  const { data, error } = await supabase
+    .from('credit_config')
+    .select('*')
+    .order('model')
+    .order('resolution');
+
+  if (error || !data) return [];
+  return data as CreditConfigRow[];
+}
+
+export async function updateCreditConfig(
+  id: number,
+  updates: { kie_base_cost?: number; markup_pct?: number; our_cost?: number; is_active?: boolean }
+): Promise<void> {
+  await supabase
+    .from('credit_config')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id);
+}
+
+export async function adminAdjustUserCredits(
+  userId: string,
+  amount: number,
+  description: string
+): Promise<void> {
+  await supabase.rpc('admin_adjust_credits', {
+    p_user_id: userId,
+    p_amount: amount,
+    p_description: description,
+  });
+}
+
+export async function adminAddAddonToUser(userId: string): Promise<void> {
+  await supabase.rpc('add_addon_credits', { p_user_id: userId });
+}
+
+export async function getCreditTransactions(userId?: string, limit = 50): Promise<any[]> {
+  let query = supabase
+    .from('credit_transactions')
+    .select('*, profiles(email, name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+
+  return data.map((t: any) => ({
+    ...t,
+    user_email: t.profiles?.email ?? null,
+    user_name: t.profiles?.name ?? null,
+  }));
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
 export async function getReportKPIs() {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 

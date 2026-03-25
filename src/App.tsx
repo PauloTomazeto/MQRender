@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { LayoutDashboard } from 'lucide-react';
 import { AuthGate } from './components/AuthGate';
@@ -6,12 +6,21 @@ import { Header } from './components/Header';
 import { Studio } from './components/Studio';
 import { AdminDashboard } from './components/AdminDashboard';
 import { useAuth, signOut } from './lib/useAuth';
+import { getUserCreditStatus, type CreditStatus } from './services/creditService';
 
 type View = 'studio' | 'admin' | 'subscription';
 
 export default function App() {
   const { user, loading } = useAuth();
   const [view, setView] = useState<View>('studio');
+  const [credits, setCredits] = useState<CreditStatus | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    getUserCreditStatus(user.id)
+      .then(setCredits)
+      .catch(() => {});
+  }, [user]);
 
   // Lê role diretamente do app_metadata do JWT — sem query ao banco
   const isAdmin = user?.app_metadata?.role === 'admin';
@@ -49,6 +58,7 @@ export default function App() {
         onSubscriptionClick={() => setView('subscription')}
         onStudioClick={() => setView('studio')}
         currentView={view}
+        credits={credits}
       />
 
       {view === 'studio' ? <Studio /> : <Studio forcedStep="subscription" />}

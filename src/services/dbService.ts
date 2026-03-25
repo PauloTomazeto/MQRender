@@ -842,3 +842,25 @@ export async function getSessionSummary(sessionId: string) {
   }
   return data;
 }
+
+// =============================================================================
+// SISTEMA DE CRÉDITOS
+// =============================================================================
+
+export async function getUserCreditStatus() {
+  // re-export wrapper — already in creditService, but useful from dbService too
+  const { getUserCreditStatus: getStatus } = await import('./creditService');
+  return getStatus();
+}
+
+export async function addAddonCredits(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return { success: false, error: 'Usuário não autenticado' };
+    const { error } = await supabase.rpc('add_addon_credits', { p_user_id: userId });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}

@@ -8,6 +8,7 @@ import {
   validateOrThrow,
 } from '../schemas';
 import { supabase } from '../lib/supabase';
+import { consumeCredits, checkCredits, getCreditCost } from './creditService';
 
 function getAI() {
   const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
@@ -663,7 +664,7 @@ export async function analyzePostProduction(
   return validateOrThrow(PostProductionResultSchema, raw, 'analyzePostProduction');
 }
 
-// ─── KIE.ai Nano Banana Pro ───────────────────────────────────────────────────
+// ─── KIE.ai Nano Banana 2 ─────────────────────────────────────────────────────
 const KIE_API_BASE = 'https://api.kie.ai/api/v1/jobs';
 const KIE_POLL_INTERVAL_MS = 5000;
 const KIE_MAX_POLLS = 36; // 36 × 5s = 3 min
@@ -717,11 +718,11 @@ function deleteTempImage(path: string): void {
     .catch(err => console.warn('KIE.ai: falha ao remover imagem temporária:', err));
 }
 
-export async function generateNanoBananaPro(
+export async function generateNanoBanana2(
   prompt: string,
   negativePrompt: string,
   aspectRatio: string,
-  resolution: '1K' | '2K',
+  resolution: '1K' | '2K' | '4K',
   imageRef?: string
 ): Promise<string> {
   const apiKey = getKieKey();
@@ -734,7 +735,7 @@ export async function generateNanoBananaPro(
     `- Iluminação cinematográfica com gradiente de sombras suaves e penumbra precisa\n` +
     `- Aberração cromática sutil nas bordas, grain de filme Kodak Portra 400\n` +
     `- Profundidade de campo calculada: foco nítido no plano principal com bokeh progressivo\n` +
-    `- Resolução alvo: ${resolution === '2K' ? 'Ultra HD 2K' : 'Alta definição 1K'}, Aspect Ratio ${aspectRatio}\n\n` +
+    `- Resolução alvo: ${resolution === '4K' ? 'Ultra HD 4K' : resolution === '2K' ? 'Ultra HD 2K' : 'Alta definição 1K'}, Aspect Ratio ${aspectRatio}\n\n` +
     `NEGATIVO ABSOLUTO (PROIBIDO): ${negativePrompt}`;
 
   // ── Upload imagem de referência → signed URL pública para o KIE.ai ────────
@@ -755,6 +756,15 @@ export async function generateNanoBananaPro(
     }
   }
 
+  // ── Verificar e consumir créditos ─────────────────────────────────────────
+  const creditCost = await getCreditCost('nano-banana-2', resolution);
+  const hasCredits = await checkCredits(creditCost);
+  if (!hasCredits) {
+    throw new Error(
+      'Créditos insuficientes. Considere adquirir um pacote adicional de 1.000 créditos.'
+    );
+  }
+
   // ── Step 1: criar task ────────────────────────────────────────────────────
   const createRes = await fetch(`${KIE_API_BASE}/createTask`, {
     method: 'POST',
@@ -763,7 +773,7 @@ export async function generateNanoBananaPro(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'nano-banana-pro',
+      model: 'nano-banana-2',
       input: {
         prompt: fullPrompt,
         ...(imageInput.length > 0 && { image_input: imageInput }),
@@ -806,6 +816,7 @@ export async function generateNanoBananaPro(
       const url = result.resultUrls?.[0];
       if (tempPath) deleteTempImage(tempPath);
       if (!url) throw new Error('KIE.ai: geração concluída mas sem URL de imagem.');
+      await consumeCredits('nano-banana-2', resolution);
       return url;
     }
 
@@ -832,6 +843,15 @@ export async function generateNanoBananaImage(
   resolution: '1K' | '2K',
   imageRef?: string
 ): Promise<string> {
+  // ── Verificar e consumir créditos ─────────────────────────────────────────
+  const creditCost = await getCreditCost('gemini-flash-image', resolution);
+  const hasCredits = await checkCredits(creditCost);
+  if (!hasCredits) {
+    throw new Error(
+      'Créditos insuficientes. Considere adquirir um pacote adicional de 1.000 créditos.'
+    );
+  }
+
   try {
     const fullPrompt = `${prompt}\n\nNegative Prompt: ${negativePrompt}\nFormat Requirements: Aspect Ratio ${aspectRatio}, Resolution ${resolution}.`;
 
@@ -877,6 +897,7 @@ export async function generateNanoBananaImage(
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData && part.inlineData.data) {
+        await consumeCredits('gemini-flash-image', resolution);
         return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
       }
     }

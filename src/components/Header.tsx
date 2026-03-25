@@ -1,6 +1,7 @@
-import { ShieldCheck, Lock, LogOut } from 'lucide-react';
+import { ShieldCheck, Lock, LogOut, Zap } from 'lucide-react';
 import logoUrl from '../assets/logo.png';
 import { cn } from './UI';
+import type { CreditStatus } from '../services/creditService';
 
 export function Header({
   isAdmin,
@@ -9,6 +10,7 @@ export function Header({
   onSubscriptionClick,
   onStudioClick,
   currentView,
+  credits,
 }: {
   isAdmin?: boolean;
   onAdminClick?: () => void;
@@ -16,6 +18,7 @@ export function Header({
   onSubscriptionClick?: () => void;
   onStudioClick?: () => void;
   currentView?: string;
+  credits?: CreditStatus | null;
 }) {
   return (
     <header className="fixed top-0 left-0 w-full z-40 bg-white/80 backdrop-blur-md border-b border-black/5 px-6 py-4">
@@ -54,6 +57,15 @@ export function Header({
             >
               <Lock className="w-4 h-4" />
             </button>
+          )}
+
+          {credits != null && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200">
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
+                {credits.credits_available.toLocaleString('pt-BR')} créditos
+              </span>
+            </div>
           )}
 
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bluegray/5 border border-black/5">

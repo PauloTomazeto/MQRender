@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Upload,
@@ -51,9 +51,10 @@ import {
   analyzePostProduction,
   analyzeDetailCloses,
   generateNanoBananaImage,
-  generateNanoBananaPro,
+  generateNanoBanana2,
 } from '../services/geminiService';
 import { analyzeMoveImage, generateMovePrompts } from '../services/moveService';
+import { getUserCreditStatus, type CreditStatus } from '../services/creditService';
 
 export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   const [mode, setMode] = useState<AppMode>('promp');
@@ -107,6 +108,14 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   const [moveResult, setMoveResult] = useState<MoveOutput | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [postProdResult, setPostProdResult] = useState<PostProductionResult | null>(null);
+
+  // Créditos do usuário
+  const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+  useEffect(() => {
+    getUserCreditStatus()
+      .then(setCreditStatus)
+      .catch(() => {});
+  }, []);
 
   // Geração de Imagem Premium
   const [genModel, setGenModel] = useState<'flash' | 'pro'>('flash');
@@ -2598,6 +2607,19 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                 Crie um render conceitual instantâneo com{' '}
                 {genModel === 'flash' ? 'Nano Banana Flash' : 'Nano Banana Pro'}.
               </p>
+              {creditStatus != null && (
+                <div className="inline-flex items-center gap-3 mt-4 px-5 py-2.5 rounded-full bg-amber-50 border border-amber-200">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-xs font-bold text-amber-700">
+                    {creditStatus.credits_available.toLocaleString('pt-BR')} créditos disponíveis
+                  </span>
+                  <span className="text-[10px] text-amber-500/70 font-medium">
+                    · custo desta geração:{' '}
+                    {genModel === 'flash' ? (genRes === '2K' ? 12 : 8) : genRes === '2K' ? 24 : 16}{' '}
+                    créditos
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -2778,7 +2800,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                     try {
                       const img =
                         genModel === 'pro'
-                          ? await generateNanoBananaPro(
+                          ? await generateNanoBanana2(
                               result.positive,
                               result.negative,
                               genAspect,
@@ -2793,6 +2815,9 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                               image || undefined
                             );
                       setGeneratedImg(img);
+                      getUserCreditStatus()
+                        .then(setCreditStatus)
+                        .catch(() => {});
                     } catch (e: any) {
                       console.error('Erro no catch Studio:', e);
                       const errorMessage = e.message || 'Erro desconhecido da API de Geração';
