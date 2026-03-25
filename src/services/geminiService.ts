@@ -1,5 +1,5 @@
 import type { GenerateContentResponse } from '@google/genai';
-import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import type { ScanResult, PromptOutput, PostProductionResult, DetailScanResult } from '../types';
 import {
   ScanResultSchema,
@@ -109,19 +109,41 @@ Para cada fonte artificial ou natural pontual identificada na cena:
 `;
 
 async function callGemini(contents: any, schema?: any): Promise<any> {
-  const model = 'gemini-3-flash-preview';
-  const ai = getAI();
+  const apiKey = getKieKey();
 
-  const config: any = {
-    systemInstruction: SYSTEM_INSTRUCTION,
+  const parts = Array.isArray(contents) ? contents[0].parts : contents.parts;
+  const kieContent: any[] = parts
+    .map((p: any) => {
+      if (p.text) return { type: 'input_text', text: p.text };
+      if (p.inlineData)
+        return {
+          type: 'input_image',
+          image_url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`,
+        };
+      return null;
+    })
+    .filter(Boolean);
+
+  const body: any = {
+    model: 'gpt-5-4',
+    input: [
+      { role: 'system', content: [{ type: 'input_text', text: SYSTEM_INSTRUCTION }] },
+      { role: 'user', content: kieContent },
+    ],
   };
 
   if (schema) {
-    config.responseMimeType = 'application/json';
-    config.responseSchema = schema;
+    body.tools = [
+      {
+        type: 'function',
+        name: 'respond',
+        description: 'Retorna resultado estruturado em JSON',
+        parameters: schema,
+      },
+    ];
+    body.tool_choice = 'auto';
   }
 
-  // Timeout pattern to prevent infinite hangs
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(
       () => reject(new Error('A requisição à IA demorou demais (timeout). Verifique sua conexão.')),
@@ -129,31 +151,37 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     )
   );
 
+  const fetchPromise = fetch('https://api.kie.ai/codex/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }).then(async res => {
+    if (!res.ok) throw new Error(`KIE API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return res.json();
+  });
+
   try {
-    const response = (await Promise.race([
-      ai.models.generateContent({
-        model,
-        contents,
-        config: {
-          ...config,
-          maxOutputTokens: 10000,
-        },
-      }),
-      timeoutPromise,
-    ])) as GenerateContentResponse;
-
-    const text = response.text;
-
-    if (!text) {
-      throw new Error('A IA retornou uma resposta vazia.');
-    }
+    const data: any = await Promise.race([fetchPromise, timeoutPromise]);
 
     if (schema) {
+      const funcCall = data.output?.find((o: any) => o.type === 'function_call');
+      if (funcCall?.arguments) {
+        try {
+          return JSON.parse(funcCall.arguments);
+        } catch {
+          /* fallback to text */
+        }
+      }
+      const text: string =
+        data.output?.find((o: any) => o.type === 'message')?.content?.[0]?.text ?? '';
+      if (!text) throw new Error('A IA retornou uma resposta vazia.');
       try {
         return JSON.parse(text);
       } catch (parseError) {
         console.error('Failed to parse response as JSON:', text);
-        // Fallback strategies
         const jsonMatch =
           text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
         if (jsonMatch && jsonMatch[1]) {
@@ -178,9 +206,11 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
       }
     }
 
+    const text = data.output?.find((o: any) => o.type === 'message')?.content?.[0]?.text;
+    if (!text) throw new Error('A IA retornou uma resposta vazia.');
     return text;
   } catch (error) {
-    console.error('Gemini Call Error:', error);
+    console.error('KIE Call Error:', error);
     throw error;
   }
 }
@@ -209,19 +239,19 @@ export async function analyzeDetailCloses(base64Image: string): Promise<DetailSc
     ];
 
     const schema = {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
-        overallComposition: { type: Type.STRING },
+        overallComposition: { type: 'string' },
         closes: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              id: { type: Type.INTEGER },
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              location: { type: Type.STRING },
-              prompt: { type: Type.STRING },
+              id: { type: 'integer' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              location: { type: 'string' },
+              prompt: { type: 'string' },
             },
             required: ['id', 'title', 'description', 'location', 'prompt'],
           },
@@ -260,156 +290,156 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
     ];
 
     const schema = {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
-        isFloorPlan: { type: Type.BOOLEAN },
-        typology: { type: Type.STRING },
-        floors: { type: Type.INTEGER },
-        volumes: { type: Type.STRING },
+        isFloorPlan: { type: 'boolean' },
+        typology: { type: 'string' },
+        floors: { type: 'integer' },
+        volumes: { type: 'string' },
         materials: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              elemento: { type: Type.STRING },
-              acabamento: { type: Type.STRING },
-              cor_ral: { type: Type.STRING },
+              elemento: { type: 'string' },
+              acabamento: { type: 'string' },
+              cor_ral: { type: 'string' },
               reflectancia: {
-                type: Type.STRING,
+                type: 'string',
                 enum: ['matte', 'semi-matte', 'semi-gloss', 'gloss', 'espelhado'],
               },
-              textura_fisica: { type: Type.STRING },
-              estado_conservacao: { type: Type.STRING },
-              indice_rugosidade_estimado: { type: Type.NUMBER },
-              notas_textura: { type: Type.STRING },
+              textura_fisica: { type: 'string' },
+              estado_conservacao: { type: 'string' },
+              indice_rugosidade_estimado: { type: 'number' },
+              notas_textura: { type: 'string' },
               // PBR Material Precision Pipeline
-              pbr_diffuse: { type: Type.STRING },
-              pbr_reflection: { type: Type.NUMBER },
-              pbr_glossiness: { type: Type.NUMBER },
-              pbr_bump: { type: Type.STRING },
-              pbr_light_behavior: { type: Type.STRING },
+              pbr_diffuse: { type: 'string' },
+              pbr_reflection: { type: 'number' },
+              pbr_glossiness: { type: 'number' },
+              pbr_bump: { type: 'string' },
+              pbr_light_behavior: { type: 'string' },
             },
             required: ['elemento', 'acabamento', 'reflectancia'],
           },
         },
         openings: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              tipo: { type: Type.STRING },
-              proporcao: { type: Type.STRING },
-              posicao_fachada: { type: Type.STRING },
+              tipo: { type: 'string' },
+              proporcao: { type: 'string' },
+              posicao_fachada: { type: 'string' },
             },
           },
         },
         camera: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            height_m: { type: Type.NUMBER },
-            distance_m: { type: Type.NUMBER },
-            focal_apparent: { type: Type.STRING },
-            distortion: { type: Type.STRING },
-            horizontal_angle: { type: Type.STRING },
-            vertical_tilt: { type: Type.STRING },
-            isLowAngle: { type: Type.BOOLEAN },
+            height_m: { type: 'number' },
+            distance_m: { type: 'number' },
+            focal_apparent: { type: 'string' },
+            distortion: { type: 'string' },
+            horizontal_angle: { type: 'string' },
+            vertical_tilt: { type: 'string' },
+            isLowAngle: { type: 'boolean' },
           },
           required: ['height_m', 'distance_m', 'focal_apparent'],
         },
         light: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            period: { type: Type.STRING },
-            temp_k: { type: Type.NUMBER },
-            azimuthal_direction: { type: Type.STRING },
-            elevation_angle: { type: Type.NUMBER },
-            quality: { type: Type.STRING },
-            ratio: { type: Type.STRING },
-            shadows: { type: Type.STRING },
-            shadow_direction: { type: Type.STRING },
-            artificial_sources: { type: Type.ARRAY, items: { type: Type.STRING } },
-            ambient_temp: { type: Type.STRING },
-            bloom_glare: { type: Type.BOOLEAN },
-            dominant_source: { type: Type.STRING },
-            light_mixing: { type: Type.STRING },
-            indirect_ratio: { type: Type.STRING },
+            period: { type: 'string' },
+            temp_k: { type: 'number' },
+            azimuthal_direction: { type: 'string' },
+            elevation_angle: { type: 'number' },
+            quality: { type: 'string' },
+            ratio: { type: 'string' },
+            shadows: { type: 'string' },
+            shadow_direction: { type: 'string' },
+            artificial_sources: { type: 'array', items: { type: 'string' } },
+            ambient_temp: { type: 'string' },
+            bloom_glare: { type: 'boolean' },
+            dominant_source: { type: 'string' },
+            light_mixing: { type: 'string' },
+            indirect_ratio: { type: 'string' },
           },
           required: ['period', 'temp_k', 'quality'],
         },
         lightPoints: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              id: { type: Type.STRING },
-              location: { type: Type.STRING },
+              id: { type: 'string' },
+              location: { type: 'string' },
               type: {
-                type: Type.STRING,
+                type: 'string',
                 enum: ['rectangle', 'sphere', 'spot', 'ies', 'omni', 'dome', 'emissive', 'ambient'],
               },
-              intensity_initial: { type: Type.NUMBER },
-              temp_k_initial: { type: Type.NUMBER },
+              intensity_initial: { type: 'number' },
+              temp_k_initial: { type: 'number' },
               // V-Ray precision fields
               shape: {
-                type: Type.STRING,
+                type: 'string',
                 enum: ['rectangular', 'elliptical', 'spherical', 'conical', 'mesh'],
               },
-              decay: { type: Type.STRING, enum: ['inverse_square', 'linear', 'none'] },
-              cone_angle: { type: Type.NUMBER },
-              penumbra_angle: { type: Type.NUMBER },
-              directionality: { type: Type.NUMBER },
-              shadow_softness: { type: Type.NUMBER },
-              affect_specular: { type: Type.BOOLEAN },
-              affect_diffuse: { type: Type.BOOLEAN },
-              affect_reflections: { type: Type.BOOLEAN },
-              visible_in_render: { type: Type.BOOLEAN },
-              spatial_x_pct: { type: Type.NUMBER },
-              spatial_y_pct: { type: Type.NUMBER },
-              confidence: { type: Type.NUMBER },
-              bloom_glare: { type: Type.BOOLEAN },
-              color_hex: { type: Type.STRING },
+              decay: { type: 'string', enum: ['inverse_square', 'linear', 'none'] },
+              cone_angle: { type: 'number' },
+              penumbra_angle: { type: 'number' },
+              directionality: { type: 'number' },
+              shadow_softness: { type: 'number' },
+              affect_specular: { type: 'boolean' },
+              affect_diffuse: { type: 'boolean' },
+              affect_reflections: { type: 'boolean' },
+              visible_in_render: { type: 'boolean' },
+              spatial_x_pct: { type: 'number' },
+              spatial_y_pct: { type: 'number' },
+              confidence: { type: 'number' },
+              bloom_glare: { type: 'boolean' },
+              color_hex: { type: 'string' },
             },
             required: ['id', 'location', 'type', 'intensity_initial', 'temp_k_initial'],
           },
         },
         context: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            topography: { type: Type.STRING },
-            vegetation_pct: { type: Type.NUMBER },
-            species: { type: Type.ARRAY, items: { type: Type.STRING } },
-            piso_externo: { type: Type.STRING },
-            vehicles: { type: Type.STRING },
-            infrastructure: { type: Type.ARRAY, items: { type: Type.STRING } },
-            neighbors: { type: Type.STRING },
-            horizon: { type: Type.BOOLEAN },
-            sky_pct: { type: Type.NUMBER },
-            image_quality: { type: Type.STRING },
+            topography: { type: 'string' },
+            vegetation_pct: { type: 'number' },
+            species: { type: 'array', items: { type: 'string' } },
+            piso_externo: { type: 'string' },
+            vehicles: { type: 'string' },
+            infrastructure: { type: 'array', items: { type: 'string' } },
+            neighbors: { type: 'string' },
+            horizon: { type: 'boolean' },
+            sky_pct: { type: 'number' },
+            image_quality: { type: 'string' },
           },
         },
         confidence: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            materials: { type: Type.NUMBER },
-            camera: { type: Type.NUMBER },
-            light: { type: Type.NUMBER },
-            context: { type: Type.NUMBER },
-            general: { type: Type.NUMBER },
+            materials: { type: 'number' },
+            camera: { type: 'number' },
+            light: { type: 'number' },
+            context: { type: 'number' },
+            general: { type: 'number' },
           },
           required: ['materials', 'camera', 'light', 'context', 'general'],
         },
-        postProductionStrategy: { type: Type.STRING },
-        floorPlanType: { type: Type.STRING, enum: ['A', 'B', 'C', 'D'] },
+        postProductionStrategy: { type: 'string' },
+        floorPlanType: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
         environments: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              id: { type: Type.INTEGER },
-              nome: { type: Type.STRING },
-              area_m2: { type: Type.NUMBER },
-              tipo: { type: Type.STRING },
-              posicao: { type: Type.STRING },
+              id: { type: 'integer' },
+              nome: { type: 'string' },
+              area_m2: { type: 'number' },
+              tipo: { type: 'string' },
+              posicao: { type: 'string' },
             },
           },
         },
@@ -641,21 +671,21 @@ export async function analyzePostProduction(
   ];
 
   const schema = {
-    type: Type.OBJECT,
+    type: 'object',
     properties: {
-      cgiIssues: { type: Type.ARRAY, items: { type: Type.STRING } },
+      cgiIssues: { type: 'array', items: { type: 'string' } },
       pipeline: {
-        type: Type.ARRAY,
+        type: 'array',
         items: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            map: { type: Type.STRING },
-            value: { type: Type.STRING },
-            description: { type: Type.STRING },
+            map: { type: 'string' },
+            value: { type: 'string' },
+            description: { type: 'string' },
           },
         },
       },
-      postProductionPrompt: { type: Type.STRING },
+      postProductionPrompt: { type: 'string' },
     },
     required: ['cgiIssues', 'pipeline', 'postProductionPrompt'],
   };

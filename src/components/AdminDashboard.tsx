@@ -519,7 +519,7 @@ function OverviewTab() {
             <h3 className="font-display font-bold text-bluegray mb-4">Status do Sistema</h3>
             <div className="space-y-2">
               {[
-                { label: 'Gemini 2.5 Flash', ok: true, status: 'Operacional' },
+                { label: 'GPT-5.4 (KIE)', ok: true, status: 'Operacional' },
                 { label: 'Vertex AI', ok: true, status: 'Operacional' },
                 { label: 'Supabase Auth', ok: true, status: 'Operacional' },
                 { label: 'TOOL-SEC', ok: true, status: 'Armado' },

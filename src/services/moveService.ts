@@ -1,18 +1,10 @@
-import type { GenerateContentResponse } from '@google/genai';
-import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import type { MoveScanResult, MoveConfig, MoveOutput } from '../types';
 import { MoveScanResultSchema, MoveOutputSchema, validateOrThrow } from '../schemas';
 
-function getAI() {
-  const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
-
-  if (!key) {
-    throw new Error(
-      'Chave de API não configurada. Adicione GEMINI_API_KEY no arquivo .env (copie .env.example como base).'
-    );
-  }
-
-  return new GoogleGenAI({ apiKey: key });
+function getKieKey(): string {
+  const key = process.env.KIE_API_KEY;
+  if (!key) throw new Error('KIE_API_KEY não configurada. Adicione no arquivo .env.');
+  return key;
 }
 
 const MOVE_SYSTEM_INSTRUCTION = `
@@ -50,19 +42,41 @@ DISCRIMINAÇÃO DE MATERIAIS (MANDATÓRIO):
 `;
 
 async function callGemini(contents: any, schema?: any): Promise<any> {
-  const model = 'gemini-3-flash-preview';
-  const ai = getAI();
+  const apiKey = getKieKey();
 
-  const config: any = {
-    systemInstruction: MOVE_SYSTEM_INSTRUCTION,
+  const parts = Array.isArray(contents) ? contents[0].parts : contents.parts;
+  const kieContent: any[] = parts
+    .map((p: any) => {
+      if (p.text) return { type: 'input_text', text: p.text };
+      if (p.inlineData)
+        return {
+          type: 'input_image',
+          image_url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`,
+        };
+      return null;
+    })
+    .filter(Boolean);
+
+  const body: any = {
+    model: 'gpt-5-4',
+    input: [
+      { role: 'system', content: [{ type: 'input_text', text: MOVE_SYSTEM_INSTRUCTION }] },
+      { role: 'user', content: kieContent },
+    ],
   };
 
   if (schema) {
-    config.responseMimeType = 'application/json';
-    config.responseSchema = schema;
+    body.tools = [
+      {
+        type: 'function',
+        name: 'respond',
+        description: 'Retorna resultado estruturado em JSON',
+        parameters: schema,
+      },
+    ];
+    body.tool_choice = 'auto';
   }
 
-  // Timeout pattern to prevent infinite hangs
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(
       () => reject(new Error('A requisição à IA demorou demais (timeout). Verifique sua conexão.')),
@@ -70,26 +84,33 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     )
   );
 
+  const fetchPromise = fetch('https://api.kie.ai/codex/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }).then(async res => {
+    if (!res.ok) throw new Error(`KIE API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return res.json();
+  });
+
   try {
-    const response = (await Promise.race([
-      ai.models.generateContent({
-        model,
-        contents,
-        config: {
-          ...config,
-          maxOutputTokens: 10000,
-        },
-      }),
-      timeoutPromise,
-    ])) as GenerateContentResponse;
-
-    const text = response.text;
-
-    if (!text) {
-      throw new Error('A IA retornou uma resposta vazia.');
-    }
+    const data: any = await Promise.race([fetchPromise, timeoutPromise]);
 
     if (schema) {
+      const funcCall = data.output?.find((o: any) => o.type === 'function_call');
+      if (funcCall?.arguments) {
+        try {
+          return JSON.parse(funcCall.arguments);
+        } catch {
+          /* fallback to text */
+        }
+      }
+      const text: string =
+        data.output?.find((o: any) => o.type === 'message')?.content?.[0]?.text ?? '';
+      if (!text) throw new Error('A IA retornou uma resposta vazia.');
       try {
         return JSON.parse(text);
       } catch (parseError) {
@@ -118,9 +139,11 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
       }
     }
 
+    const text = data.output?.find((o: any) => o.type === 'message')?.content?.[0]?.text;
+    if (!text) throw new Error('A IA retornou uma resposta vazia.');
     return text;
   } catch (error) {
-    console.error('Gemini Move Call Error:', error);
+    console.error('KIE Move Call Error:', error);
     throw error;
   }
 }
@@ -147,45 +170,45 @@ export async function analyzeMoveImage(base64Image: string): Promise<MoveScanRes
     ];
 
     const schema = {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         technicalAnalysis: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            resolution: { type: Type.STRING },
-            hasText: { type: Type.STRING },
-            visualStyle: { type: Type.STRING },
-            aspectRatio: { type: Type.STRING },
+            resolution: { type: 'string' },
+            hasText: { type: 'string' },
+            visualStyle: { type: 'string' },
+            aspectRatio: { type: 'string' },
           },
         },
         cinematicAnalysis: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            subject: { type: Type.STRING },
-            cameraShot: { type: Type.STRING },
-            lighting: { type: Type.STRING },
-            colorPalette: { type: Type.STRING },
-            depthOfField: { type: Type.STRING },
+            subject: { type: 'string' },
+            cameraShot: { type: 'string' },
+            lighting: { type: 'string' },
+            colorPalette: { type: 'string' },
+            depthOfField: { type: 'string' },
           },
         },
         mobilityDiagnosis: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
-            staticElements: { type: Type.ARRAY, items: { type: Type.STRING } },
-            dynamicElements: { type: Type.ARRAY, items: { type: Type.STRING } },
-            parallaxPotential: { type: Type.STRING },
-            restrictions: { type: Type.ARRAY, items: { type: Type.STRING } },
+            staticElements: { type: 'array', items: { type: 'string' } },
+            dynamicElements: { type: 'array', items: { type: 'string' } },
+            parallaxPotential: { type: 'string' },
+            restrictions: { type: 'array', items: { type: 'string' } },
           },
         },
         suggestedMovements: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              description: { type: Type.STRING },
-              intensity: { type: Type.STRING, enum: ['Sutil', 'Suave', 'Dinâmico', 'Épico'] },
+              id: { type: 'string' },
+              name: { type: 'string' },
+              description: { type: 'string' },
+              intensity: { type: 'string', enum: ['Sutil', 'Suave', 'Dinâmico', 'Épico'] },
             },
             required: ['id', 'name', 'description', 'intensity'],
           },
@@ -244,18 +267,18 @@ export async function generateMovePrompts(
 
   try {
     const schema = {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         options: {
-          type: Type.ARRAY,
+          type: 'array',
           items: {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-              id: { type: Type.INTEGER },
-              name: { type: Type.STRING },
-              prompt: { type: Type.STRING },
-              simulatedEquipment: { type: Type.STRING },
-              intensity: { type: Type.STRING },
+              id: { type: 'integer' },
+              name: { type: 'string' },
+              prompt: { type: 'string' },
+              simulatedEquipment: { type: 'string' },
+              intensity: { type: 'string' },
             },
             required: ['id', 'name', 'prompt', 'simulatedEquipment', 'intensity'],
           },
