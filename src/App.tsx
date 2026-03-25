@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { LayoutDashboard } from 'lucide-react';
 import { AuthGate } from './components/AuthGate';
@@ -15,12 +15,16 @@ export default function App() {
   const [view, setView] = useState<View>('studio');
   const [credits, setCredits] = useState<CreditStatus | null>(null);
 
-  useEffect(() => {
+  const refreshCredits = useCallback(() => {
     if (!user) return;
     getUserCreditStatus(user.id)
       .then(setCredits)
-      .catch(() => {});
+      .catch(err => console.error('[MQv3 Credits]', err));
   }, [user]);
+
+  useEffect(() => {
+    refreshCredits();
+  }, [refreshCredits]);
 
   // Lê role diretamente do app_metadata do JWT — sem query ao banco
   const isAdmin = user?.app_metadata?.role === 'admin';

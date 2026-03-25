@@ -157,7 +157,7 @@ export function AdminDashboard({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     getUserCreditStatus()
       .then(setMyCredits)
-      .catch(() => {});
+      .catch(err => console.error('[MQv3 Credits Admin]', err));
   }, []);
 
   const nav = [

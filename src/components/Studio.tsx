@@ -114,7 +114,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   useEffect(() => {
     getUserCreditStatus()
       .then(setCreditStatus)
-      .catch(() => {});
+      .catch(err => console.error('[MQv3 Credits Studio]', err));
   }, []);
 
   // Geração de Imagem Premium
@@ -2817,7 +2817,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                       setGeneratedImg(img);
                       getUserCreditStatus()
                         .then(setCreditStatus)
-                        .catch(() => {});
+                        .catch(err => console.error('[MQv3 Credits refresh]', err));
                     } catch (e: any) {
                       console.error('Erro no catch Studio:', e);
                       const errorMessage = e.message || 'Erro desconhecido da API de Geração';
