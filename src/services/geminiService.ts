@@ -140,6 +140,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
 
   const body: any = {
     model: 'gpt-5-4',
+    stream: false,
     input: [
       { role: 'system', content: [{ type: 'input_text', text: SYSTEM_INSTRUCTION }] },
       { role: 'user', content: kieContent },
