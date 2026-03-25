@@ -133,7 +133,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
   }
 
   const systemContent = schema
-    ? `${SYSTEM_INSTRUCTION}\n\nIMPORTANTE: Responda EXCLUSIVAMENTE com um objeto JSON válido, sem nenhum texto antes ou depois, sem markdown, sem blocos de código. Apenas o JSON puro.`
+    ? `${SYSTEM_INSTRUCTION}\n\nIMPORTANTE: Responda EXCLUSIVAMENTE com um objeto JSON válido seguindo EXATAMENTE este schema:\n${JSON.stringify(schema, null, 2)}\n\nNenhum texto antes ou depois. Sem markdown. Sem blocos de código. Apenas o JSON puro preenchido com os dados da análise.`
     : SYSTEM_INSTRUCTION;
 
   const body: any = {
