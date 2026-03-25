@@ -1,10 +1,52 @@
 import type { MoveScanResult, MoveConfig, MoveOutput } from '../types';
 import { MoveScanResultSchema, MoveOutputSchema, validateOrThrow } from '../schemas';
+import { supabase } from '../lib/supabase';
+
+const KIE_TEMP_BUCKET = 'input-images';
+const KIE_TEMP_FOLDER = 'kie-temp';
 
 function getKieKey(): string {
   const key = process.env.KIE_API_KEY;
   if (!key) throw new Error('KIE_API_KEY não configurada. Adicione no arquivo .env.');
   return key;
+}
+
+async function uploadTempImage(base64: string): Promise<{ path: string; url: string }> {
+  const [meta, rawData] = base64.split(',');
+  const mimeMatch = meta.match(/data:([^;]+)/);
+  const mime = mimeMatch?.[1] ?? 'image/jpeg';
+  const ext = mime.split('/')[1] ?? 'jpg';
+
+  const binary = atob(rawData);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id ?? 'anon';
+  const path = `${userId}/${KIE_TEMP_FOLDER}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from(KIE_TEMP_BUCKET)
+    .upload(path, blob, { contentType: mime, upsert: false });
+
+  if (uploadErr) throw new Error(`Upload temporário falhou: ${uploadErr.message}`);
+
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(KIE_TEMP_BUCKET)
+    .createSignedUrl(path, 600);
+
+  if (signErr || !signed?.signedUrl)
+    throw new Error(`Erro ao gerar URL assinada: ${signErr?.message}`);
+
+  return { path, url: signed.signedUrl };
+}
+
+function deleteTempImage(path: string): void {
+  supabase.storage
+    .from(KIE_TEMP_BUCKET)
+    .remove([path])
+    .catch(err => console.warn('KIE: falha ao remover imagem temporária:', err));
 }
 
 const MOVE_SYSTEM_INSTRUCTION = `
@@ -45,17 +87,31 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
   const apiKey = getKieKey();
 
   const parts = Array.isArray(contents) ? contents[0].parts : contents.parts;
-  const kieContent: any[] = parts
-    .map((p: any) => {
-      if (p.text) return { type: 'input_text', text: p.text };
-      if (p.inlineData)
-        return {
-          type: 'input_image',
-          image_url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`,
-        };
-      return null;
-    })
-    .filter(Boolean);
+
+  // Upload images to Supabase to get signed URLs — KIE API requires public URLs, not base64
+  const tempPaths: string[] = [];
+  const kieContent: any[] = (
+    await Promise.all(
+      parts.map(async (p: any) => {
+        if (p.text) return { type: 'input_text', text: p.text };
+        if (p.inlineData) {
+          try {
+            const base64Full = `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`;
+            const { path, url } = await uploadTempImage(base64Full);
+            tempPaths.push(path);
+            return { type: 'input_image', image_url: url };
+          } catch (uploadErr) {
+            console.warn('KIE: falha no upload da imagem, usando base64.', uploadErr);
+            return {
+              type: 'input_image',
+              image_url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`,
+            };
+          }
+        }
+        return null;
+      })
+    )
+  ).filter(Boolean);
 
   const body: any = {
     model: 'gpt-5-4',
@@ -80,7 +136,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(
       () => reject(new Error('A requisição à IA demorou demais (timeout). Verifique sua conexão.')),
-      45000
+      120000
     )
   );
 
@@ -98,6 +154,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
 
   try {
     const data: any = await Promise.race([fetchPromise, timeoutPromise]);
+    tempPaths.forEach(p => deleteTempImage(p));
 
     if (schema) {
       const funcCall = data.output?.find((o: any) => o.type === 'function_call');
@@ -143,6 +200,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     if (!text) throw new Error('A IA retornou uma resposta vazia.');
     return text;
   } catch (error) {
+    tempPaths.forEach(p => deleteTempImage(p));
     console.error('KIE Move Call Error:', error);
     throw error;
   }
