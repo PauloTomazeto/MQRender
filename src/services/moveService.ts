@@ -106,28 +106,18 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     }
   }
 
+  const systemContent = schema
+    ? `${MOVE_SYSTEM_INSTRUCTION}\n\nIMPORTANTE: Responda EXCLUSIVAMENTE com um objeto JSON válido, sem nenhum texto antes ou depois, sem markdown, sem blocos de código. Apenas o JSON puro.`
+    : MOVE_SYSTEM_INSTRUCTION;
+
   const body: any = {
     model: 'gemini-3.1-pro',
     stream: false,
     messages: [
-      { role: 'system', content: MOVE_SYSTEM_INSTRUCTION },
+      { role: 'system', content: systemContent },
       { role: 'user', content: userContent },
     ],
   };
-
-  if (schema) {
-    body.tools = [
-      {
-        type: 'function',
-        function: {
-          name: 'respond',
-          description: 'Retorna resultado estruturado em JSON',
-          parameters: schema,
-        },
-      },
-    ];
-    body.tool_choice = 'auto';
-  }
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(
@@ -153,48 +143,47 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     const data: any = await Promise.race([fetchPromise, timeoutPromise]);
     tempPaths.forEach(p => deleteTempImage(p));
 
-    if (schema) {
-      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        try {
-          return JSON.parse(toolCall.function.arguments);
-        } catch {
-          /* fallback to text */
-        }
-      }
-      const text: string = data.choices?.[0]?.message?.content ?? '';
-      if (!text) throw new Error('A IA retornou uma resposta vazia.');
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        console.error('Failed to parse response as JSON:', text);
-        const jsonMatch =
-          text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
-        if (jsonMatch && jsonMatch[1]) {
-          try {
-            return JSON.parse(jsonMatch[1]);
-          } catch {
-            /* try next fallback */
-          }
-        }
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          try {
-            return JSON.parse(text.substring(firstBrace, lastBrace + 1));
-          } catch {
-            /* no valid JSON found */
-          }
-        }
-        throw new Error('Falha ao processar a resposta da IA. Formato inválido.', {
-          cause: parseError,
-        });
-      }
+    // Extract text — handle both string content and array content
+    const rawContent = data.choices?.[0]?.message?.content;
+    let text: string;
+    if (typeof rawContent === 'string') {
+      text = rawContent;
+    } else if (Array.isArray(rawContent)) {
+      text = rawContent.map((c: any) => c.text ?? '').join('');
+    } else {
+      text = '';
     }
 
-    const text = data.choices?.[0]?.message?.content;
+    console.log('KIE Gemini Move response preview:', text.slice(0, 200));
+
     if (!text) throw new Error('A IA retornou uma resposta vazia.');
-    return text;
+
+    if (!schema) return text;
+
+    // Schema mode: parse JSON from text
+    try {
+      return JSON.parse(text);
+    } catch {
+      const jsonMatch =
+        text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
+      if (jsonMatch?.[1]) {
+        try {
+          return JSON.parse(jsonMatch[1]);
+        } catch {
+          /* try next fallback */
+        }
+      }
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        try {
+          return JSON.parse(text.substring(firstBrace, lastBrace + 1));
+        } catch {
+          /* no valid JSON found */
+        }
+      }
+      throw new Error('Falha ao processar a resposta da IA. Formato inválido.');
+    }
   } catch (error) {
     tempPaths.forEach(p => deleteTempImage(p));
     console.error('KIE Gemini Move Call Error:', error);

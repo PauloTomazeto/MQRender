@@ -113,51 +113,37 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
 
   const parts = Array.isArray(contents) ? contents[0].parts : contents.parts;
 
-  // Upload images to Supabase to get signed URLs — KIE API requires public URLs, not base64
+  // Upload images to Supabase → signed URL (KIE Gemini requires public URLs)
   const tempPaths: string[] = [];
-  const kieContent: any[] = (
-    await Promise.all(
-      parts.map(async (p: any) => {
-        if (p.text) return { type: 'input_text', text: p.text };
-        if (p.inlineData) {
-          try {
-            const base64Full = `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`;
-            const { path, url } = await uploadTempImage(base64Full);
-            tempPaths.push(path);
-            return { type: 'input_image', image_url: url };
-          } catch (uploadErr) {
-            console.warn('KIE: falha no upload da imagem, usando base64.', uploadErr);
-            return {
-              type: 'input_image',
-              image_url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`,
-            };
-          }
-        }
-        return null;
-      })
-    )
-  ).filter(Boolean);
+  const userContent: any[] = [];
 
-  // Prepend system instruction into user content (KIE API docs only show role: 'user')
-  const userContent = [{ type: 'input_text', text: SYSTEM_INSTRUCTION }, ...kieContent];
+  for (const p of parts) {
+    if (p.text) {
+      userContent.push({ type: 'text', text: p.text });
+    } else if (p.inlineData) {
+      try {
+        const base64Full = `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`;
+        const { path, url } = await uploadTempImage(base64Full);
+        tempPaths.push(path);
+        userContent.push({ type: 'image_url', image_url: { url } });
+      } catch (uploadErr) {
+        console.warn('KIE Gemini: falha no upload da imagem.', uploadErr);
+      }
+    }
+  }
+
+  const systemContent = schema
+    ? `${SYSTEM_INSTRUCTION}\n\nIMPORTANTE: Responda EXCLUSIVAMENTE com um objeto JSON válido, sem nenhum texto antes ou depois, sem markdown, sem blocos de código. Apenas o JSON puro.`
+    : SYSTEM_INSTRUCTION;
 
   const body: any = {
-    model: 'gpt-5-4',
+    model: 'gemini-3.1-pro',
     stream: false,
-    input: [{ role: 'user', content: userContent }],
+    messages: [
+      { role: 'system', content: systemContent },
+      { role: 'user', content: userContent },
+    ],
   };
-
-  if (schema) {
-    body.tools = [
-      {
-        type: 'function',
-        name: 'respond',
-        description: 'Retorna resultado estruturado em JSON',
-        parameters: schema,
-      },
-    ];
-    body.tool_choice = 'auto';
-  }
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(
@@ -166,7 +152,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     )
   );
 
-  const fetchPromise = fetch('https://api.kie.ai/codex/v1/responses', {
+  const fetchPromise = fetch('https://api.kie.ai/gemini-3.1-pro/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -175,61 +161,7 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     body: JSON.stringify(body),
   }).then(async res => {
     const rawText = await res.text();
-    if (!res.ok) throw new Error(`KIE API HTTP ${res.status}: ${rawText.slice(0, 200)}`);
-
-    // KIE API returns SSE format — parse all event/data lines
-    const trimmed = rawText.trimStart();
-    if (trimmed.startsWith('event:') || trimmed.startsWith('data:')) {
-      const lines = rawText.split('\n');
-      const textDeltas: string[] = [];
-
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const jsonStr = line.slice(5).trim();
-        if (jsonStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-
-          // API-level error inside SSE
-          if (parsed.error) throw new Error(`KIE API erro: ${parsed.error}`);
-
-          // Format A: top-level output (e.g. event: res)
-          if (parsed.output) return parsed;
-
-          // Format B: response.completed → full response nested in parsed.response
-          if (parsed.response?.output) return parsed.response;
-
-          // Format C: top-level status without output (rare)
-          if (parsed.status === 'completed' && !parsed.output) continue;
-
-          // Format D: streaming text delta
-          if (typeof parsed.delta === 'string') textDeltas.push(parsed.delta);
-          if (typeof parsed.text === 'string') textDeltas.push(parsed.text);
-        } catch (e) {
-          if ((e as Error).message?.startsWith('KIE API erro')) throw e;
-        }
-      }
-
-      // Assembled from streaming deltas
-      if (textDeltas.length > 0) {
-        const fullText = textDeltas.join('');
-        return {
-          output: [
-            {
-              type: 'message',
-              content: [{ type: 'output_text', text: fullText }],
-              status: 'completed',
-            },
-          ],
-          status: 'completed',
-        };
-      }
-
-      // Debug: expose raw SSE so we can diagnose unknown formats
-      console.error('KIE SSE raw:', rawText.slice(0, 800));
-      throw new Error(`KIE API: formato SSE desconhecido. Início: ${rawText.slice(0, 120)}`);
-    }
-
+    if (!res.ok) throw new Error(`KIE Gemini HTTP ${res.status}: ${rawText.slice(0, 200)}`);
     return JSON.parse(rawText);
   });
 
@@ -237,52 +169,50 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     const data: any = await Promise.race([fetchPromise, timeoutPromise]);
     tempPaths.forEach(p => deleteTempImage(p));
 
-    if (schema) {
-      const funcCall = data.output?.find((o: any) => o.type === 'function_call');
-      if (funcCall?.arguments) {
-        try {
-          return JSON.parse(funcCall.arguments);
-        } catch {
-          /* fallback to text */
-        }
-      }
-      const text: string =
-        data.output?.find((o: any) => o.type === 'message')?.content?.[0]?.text ?? '';
-      if (!text) throw new Error('A IA retornou uma resposta vazia.');
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        console.error('Failed to parse response as JSON:', text);
-        const jsonMatch =
-          text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
-        if (jsonMatch && jsonMatch[1]) {
-          try {
-            return JSON.parse(jsonMatch[1]);
-          } catch {
-            /* try next fallback */
-          }
-        }
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          try {
-            return JSON.parse(text.substring(firstBrace, lastBrace + 1));
-          } catch {
-            /* no valid JSON found */
-          }
-        }
-        throw new Error('Falha ao processar a resposta da IA. Formato inválido.', {
-          cause: parseError,
-        });
-      }
+    // Extract text — handle both string content and array content
+    const rawContent = data.choices?.[0]?.message?.content;
+    let text: string;
+    if (typeof rawContent === 'string') {
+      text = rawContent;
+    } else if (Array.isArray(rawContent)) {
+      text = rawContent.map((c: any) => c.text ?? '').join('');
+    } else {
+      text = '';
     }
 
-    const text = data.output?.find((o: any) => o.type === 'message')?.content?.[0]?.text;
+    console.log('KIE Gemini response preview:', text.slice(0, 200));
+
     if (!text) throw new Error('A IA retornou uma resposta vazia.');
-    return text;
+
+    if (!schema) return text;
+
+    // Schema mode: parse JSON from text
+    try {
+      return JSON.parse(text);
+    } catch {
+      const jsonMatch =
+        text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
+      if (jsonMatch?.[1]) {
+        try {
+          return JSON.parse(jsonMatch[1]);
+        } catch {
+          /* try next fallback */
+        }
+      }
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        try {
+          return JSON.parse(text.substring(firstBrace, lastBrace + 1));
+        } catch {
+          /* no valid JSON found */
+        }
+      }
+      throw new Error('Falha ao processar a resposta da IA. Formato inválido.');
+    }
   } catch (error) {
     tempPaths.forEach(p => deleteTempImage(p));
-    console.error('KIE Call Error:', error);
+    console.error('KIE Gemini Call Error:', error);
     throw error;
   }
 }
