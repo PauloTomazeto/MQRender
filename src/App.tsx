@@ -5,6 +5,8 @@ import { AuthGate } from './components/AuthGate';
 import { Header } from './components/Header';
 import { Studio } from './components/Studio';
 import { AdminDashboard } from './components/AdminDashboard';
+import { ResetPassword } from './components/ResetPassword';
+import { AcessoRelay } from './components/AcessoRelay';
 import { useAuth, signOut } from './lib/useAuth';
 import { getUserCreditStatus, type CreditStatus } from './services/creditService';
 
@@ -33,6 +35,40 @@ export default function App() {
     await signOut();
     setView('studio');
   };
+
+  // Detect /auth/callback from OAuth providers (Google)
+  // Supabase sends session tokens via URL hash after OAuth redirect
+  if (window.location.pathname === '/auth/callback') {
+    // Show loading while Supabase processes the session from URL hash
+    // The useAuth hook will automatically handle the session
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-offwhite">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-bluegray/60 text-sm">Finalizando login...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Detect /acesso relay (branded access link from admin)
+  if (window.location.pathname === '/acesso') {
+    return <AcessoRelay />;
+  }
+
+  // Detect password reset flow from URL (hash or query param from Supabase)
+  const hash = window.location.hash;
+  const search = window.location.search;
+  const isResetPassword =
+    window.location.pathname === '/reset-password' ||
+    hash.includes('type=recovery') ||
+    hash.includes('type=invite') ||
+    search.includes('type=recovery') ||
+    search.includes('type=invite');
+
+  if (isResetPassword) {
+    return <ResetPassword />;
+  }
 
   // Carregando sessão Supabase
   if (loading) {

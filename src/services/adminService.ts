@@ -242,7 +242,11 @@ export async function getAllUsers(): Promise<AdminUser[]> {
     )
     .order('created_at', { ascending: false });
 
-  if (error || !data) return [];
+  if (error) {
+    console.error('[adminService] getAllUsers error:', error);
+    return [];
+  }
+  if (!data) return [];
 
   return data.map((p: any) => {
     const sub = p.subscriptions?.[0];
@@ -288,6 +292,31 @@ export async function updateUserPlan(userId: string, planName: string): Promise<
       .eq('id', userId),
     supabase.from('subscriptions').update({ plan_id: plan.id }).eq('user_id', userId),
   ]);
+}
+
+export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return { success: false, error: 'Not authenticated' };
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    return { success: false, error: result.error || 'Falha ao excluir usuário' };
+  }
+
+  return { success: true };
 }
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
@@ -527,6 +556,60 @@ export async function getCreditTransactions(userId?: string, limit = 50): Promis
 }
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
+
+// ─── Invite User ──────────────────────────────────────────────────────────────
+
+export interface InviteUserParams {
+  email: string;
+  name: string;
+  plan: 'basic' | 'premium' | 'enterprise';
+  role: 'user' | 'admin';
+  addon_credits: number;
+}
+
+export interface InviteUserResult {
+  success: boolean;
+  user_id?: string;
+  message?: string;
+  password_link?: string;
+  credits_allocated?: {
+    plan: number;
+    addon: number;
+    total: number;
+  };
+  error?: string;
+}
+
+export async function inviteUser(params: InviteUserParams): Promise<InviteUserResult> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/invite-user`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(params),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    return { success: false, error: result.error || 'Falha ao convidar usuário' };
+  }
+
+  // Transform raw Supabase recovery URL into branded access link
+  if (result.password_link) {
+    const encoded = btoa(result.password_link);
+    result.password_link = `https://renderianapratica.com.br/acesso?t=${encoded}`;
+  }
+
+  return result;
+}
 
 export async function getReportKPIs() {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();

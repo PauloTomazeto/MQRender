@@ -75,3 +75,22 @@ export async function resetPassword(email: string) {
   });
   if (error) throw error;
 }
+
+export async function signInWithGoogle() {
+  // Use skipBrowserRedirect to get the URL first and catch provider errors before navigating
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+      skipBrowserRedirect: true,
+    },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error('Google OAuth não configurado');
+  window.location.href = data.url;
+}
+
+export async function updatePassword(newPassword: string) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}

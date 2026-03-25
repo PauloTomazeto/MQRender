@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(find /c/Users/Usuario/Videos/MQv3 -maxdepth 2 -type f \\\\\\(-name *.json -o -name *.config.* -o -name .env* \\\\\\))",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(npx supabase:*)",
+      "Bash(npx tsc:*)",
+      "Bash(grep -E ^[A-Z_]+ /c/Users/Usuario/Videos/MQv3/.env)",
+      "Bash(gh auth:*)",
+      "Bash(git --version)",
+      "Bash(curl --version)",
+      "Bash(git config:*)",
+      "Bash(winget install:*)",
+      "Bash(powershell.exe -Command \"winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements\")",
+      "Bash(powershell.exe -Command \"cmdkey /list | Select-String ''github''\")",
+      "Bash(printf \"protocol=https\\\\nhost=github.com\\\\n\")",
+      "Bash(git credential:*)",
+      "Bash(npx eslint:*)"
+    ]
+  }
+}

@@ -1,0 +1,227 @@
+{
+    "projeto": "MQv3 - Render IA na Prática",
+    "data_criacao": "2026-03-25",
+    "orcamento": "N/A - Análise voluntária",
+    "objetivo": "Análise completa de código, identificação de bugs e sugestões de melhoria",
+    "lider": {
+        "nome": "Orquestrador",
+        "papel": "Coordenador de Projeto",
+        "responsabilidades": [
+            "Gerenciar a equipe de análise",
+            "Priorizar tarefas",
+            "Consolidar relatórios",
+            "Apresentar resultados ao Dono do Projeto"
+        ],
+        "contato": "N/A (sistema)"
+    },
+    "membros": [
+        {
+            "id": "analista-frontend",
+            "nome": "Ana Frontend",
+            "papel": "Analista de Frontend",
+            "especialidades": [
+                "React 19",
+                "TypeScript",
+                "Tailwind CSS",
+                "Motion/Animações",
+                "UX/UI"
+            ],
+            "responsabilidades": [
+                "Revisar componentes React",
+                "Verificar performance de renderização",
+                "Analisar estado e gerenciamento",
+                "Verificar acessibilidade",
+                "Testar fluxos de interface"
+            ],
+            "arquivos_alvo": [
+                "src/components/*.tsx",
+                "src/App.tsx",
+                "src/store/studioStore.ts"
+            ],
+            "status": "disponivel"
+        },
+        {
+            "id": "analista-backend",
+            "nome": "Bruno Backend",
+            "papel": "Analista de Backend e Banco de Dados",
+            "especialidades": [
+                "Supabase",
+                "PostgreSQL",
+                "Edge Functions",
+                "RLS Policies",
+                "Triggers"
+            ],
+            "responsabilidades": [
+                "Analisar schema do banco",
+                "Revisar políticas de segurança",
+                "Verificar performance de queries",
+                "Testar Edge Functions",
+                "Auditar migrations"
+            ],
+            "arquivos_alvo": [
+                "supabase/migrations/*.sql",
+                "supabase/functions/**/*",
+                "src/lib/supabase.ts",
+                "src/services/dbService.ts"
+            ],
+            "status": "disponivel"
+        },
+        {
+            "id": "analista-ia",
+            "nome": "Carlos IA",
+            "papel": "Analista de Inteligência Artificial",
+            "especialidades": [
+                "Google Gemini API",
+                "Geração de Prompts",
+                "Análise de Imagens",
+                "Engenharia de Prompt",
+                "KIE.ai"
+            ],
+            "responsabilidades": [
+                "Revisar prompts do sistema",
+                "Verificar validação de respostas",
+                "Analisar custos de API",
+                "Testar qualidade de saída",
+                "Otimizar tokens"
+            ],
+            "arquivos_alvo": [
+                "src/services/geminiService.ts",
+                "src/services/moveService.ts",
+                "src/services/creditService.ts"
+            ],
+            "status": "disponivel"
+        },
+        {
+            "id": "analista-seguranca",
+            "nome": "Sara Segurança",
+            "papel": "Analista de Segurança",
+            "especialidades": [
+                "Autenticação OAuth",
+                "JWT",
+                "RLS Supabase",
+                "Sanitização de Input",
+                "Variáveis de Ambiente"
+            ],
+            "responsabilidades": [
+                "Auditar sistema de autenticação",
+                "Verificar exposição de chaves",
+                "Revisar políticas RLS",
+                "Testar vectores de ataque",
+                "Verificar manejo de sessões"
+            ],
+            "arquivos_alvo": [
+                "src/lib/useAuth.ts",
+                "src/components/AuthGate.tsx",
+                ".env.example",
+                "supabase/migrations/*rls*.sql"
+            ],
+            "status": "disponivel"
+        },
+        {
+            "id": "analista-testes",
+            "nome": "Teste Tina",
+            "papel": "Analista de Qualidade e Testes",
+            "especialidades": [
+                "Vitest",
+                "Testing Library",
+                "Testes Unitários",
+                "Testes de Integração",
+                "Cobertura de Código"
+            ],
+            "responsabilidades": [
+                "Revisar testes existentes",
+                "Identificar gaps de cobertura",
+                "Propor estratégia de testes",
+                "Verificar qualidade de mocks",
+                "Auditar testes E2E"
+            ],
+            "arquivos_alvo": [
+                "src/test/*.ts",
+                "src/test/*.tsx",
+                "vitest.config.ts"
+            ],
+            "status": "disponivel"
+        },
+        {
+            "id": "analista-arquitetura",
+            "nome": "Arquiteto André",
+            "papel": "Analista de Arquitetura",
+            "especialidades": [
+                "Clean Architecture",
+                "Design Patterns",
+                "TypeScript",
+                "Zod Validation",
+                "Zustand State"
+            ],
+            "responsabilidades": [
+                "Analisar estrutura de arquivos",
+                "Verificar padrões de código",
+                "Revisar tipagem",
+                "Avaliar split de responsabilidades",
+                "Propor refatorações"
+            ],
+            "arquivos_alvo": [
+                "src/types.ts",
+                "src/schemas/index.ts",
+                "src/lib/database.types.ts",
+                "src/store/*.ts"
+            ],
+            "status": "disponivel"
+        }
+    ],
+    "tarefas_pendentes": [
+        {
+            "id": "tarefa-001",
+            "titulo": "Revisão completa de frontend",
+            "analista": "analista-frontend",
+            "prioridade": "alta",
+            "descricao": "Analisar todos os componentes React, verificar estado, performance e UX"
+        },
+        {
+            "id": "tarefa-002",
+            "titulo": "Auditoria de banco de dados",
+            "analista": "analista-backend",
+            "prioridade": "alta",
+            "descricao": "Revisar migrations, RLS, triggers e performance de queries"
+        },
+        {
+            "id": "tarefa-003",
+            "titulo": "Análise de prompts de IA",
+            "analista": "analista-ia",
+            "prioridade": "alta",
+            "descricao": "Revisar sistema de prompts, validação e custos de API"
+        },
+        {
+            "id": "tarefa-004",
+            "titulo": "Teste de segurança completo",
+            "analista": "analista-seguranca",
+            "prioridade": "alta",
+            "descricao": "Auditar autenticação, autorização e manejo de dados sensíveis"
+        },
+        {
+            "id": "tarefa-005",
+            "titulo": "Cobertura de testes",
+            "analista": "analista-testes",
+            "prioridade": "media",
+            "descricao": "Avaliar testes existentes e propor melhorias"
+        },
+        {
+            "id": "tarefa-006",
+            "titulo": "Refatoração e arquitetura",
+            "analista": "analista-arquitetura",
+            "prioridade": "media",
+            "descricao": "Analisar estrutura e propor melhorias de arquitetura"
+        }
+    ],
+    "regras_de_engajamento": [
+        "Cada membro deve produzir relatório individual",
+        "Relatórios devem ser consolidados semanalmente",
+        "Bugs críticos devem ser reportados imediatamente",
+        "Todas as sugestões devem incluir exemplo de código quando aplicável"
+    ],
+    "canais_de_comunicacao": [
+        "Todos os relatórios devem ser salvos em: /relatorios/",
+        "Bugs devem ser marcados com标签: [BUG], [WARNING], [INFO]",
+        "Código deve ser revisado em pares quando possível"
+    ]
+}

@@ -37,6 +37,7 @@ import {
   Shield,
   LogOut,
   Check,
+  Copy,
   Trash2,
   UserPlus,
   Package,
@@ -44,6 +45,8 @@ import {
   Wifi,
   WifiOff,
   Loader2,
+  CheckCircle,
+  Send,
 } from 'lucide-react';
 import { Button, Card, Badge, cn } from './UI';
 import logoUrl from '../assets/logo.png';
@@ -67,6 +70,8 @@ import {
   adminAdjustUserCredits,
   adminAddAddonToUser,
   getCreditTransactions,
+  inviteUser,
+  deleteUser,
   type AdminUser,
   type AdminLog,
   type PlanStat,
@@ -75,6 +80,7 @@ import {
   type RecentActivityItem,
   type UserCreditInfo,
   type CreditConfigRow,
+  type InviteUserParams,
 } from '../services/adminService';
 import { getUserCreditStatus, type CreditStatus } from '../services/creditService';
 
@@ -840,7 +846,7 @@ function UsersTab() {
             }}
           />
         )}
-        {inviteOpen && <InviteModal onClose={() => setInvite(false)} />}
+        {inviteOpen && <InviteModal onClose={() => setInvite(false)} onSuccess={reload} />}
       </AnimatePresence>
     </motion.div>
   );
@@ -850,6 +856,9 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
   const [plan, setPlan] = useState(user.subscription_tier);
   const [saving, setSave] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const save = async () => {
     setSave(true);
@@ -857,6 +866,19 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
     setSave(false);
     setSaved(true);
     setTimeout(onClose, 700);
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    const res = await deleteUser(user.id);
+    if (res.success) {
+      onClose();
+    } else {
+      setDeleteError(res.error ?? 'Erro ao excluir usuário');
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
   };
 
   return (
@@ -914,7 +936,12 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
               <option value="enterprise">Enterprise</option>
             </select>
           </div>
-          <Button variant="gold" className="w-full py-3 gap-2" onClick={save} disabled={saving}>
+          <Button
+            variant="gold"
+            className="w-full py-3 gap-2"
+            onClick={save}
+            disabled={saving || deleting}
+          >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : saved ? (
@@ -925,15 +952,91 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
               'Salvar Alterações'
             )}
           </Button>
+
+          {/* Delete section */}
+          <div className="pt-2 border-t border-black/5">
+            {deleteError && <p className="text-xs text-red-500 mb-2 text-center">{deleteError}</p>}
+            {!confirmDelete ? (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                disabled={deleting}
+                className="w-full py-2.5 rounded-2xl text-xs font-bold text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors flex items-center justify-center gap-2 border border-transparent hover:border-red-100"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Excluir Usuário
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[11px] text-center text-bluegray/50">
+                  Tem certeza? Esta ação não pode ser desfeita.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                    className="flex-1 py-2.5 rounded-2xl text-xs font-bold text-bluegray/60 bg-offwhite hover:bg-black/5 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 py-2.5 rounded-2xl text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    {deleting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" /> Confirmar Exclusão
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
     </motion.div>
   );
 }
 
-function InviteModal({ onClose }: { onClose: () => void }) {
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: () => void }) {
+  const [form, setForm] = useState<InviteUserParams>({
+    name: '',
+    email: '',
+    plan: 'basic',
+    role: 'user',
+    addon_credits: 0,
+  });
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [passwordLink, setPasswordLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const planCredits = form.plan === 'basic' ? 1000 : form.plan === 'premium' ? 2000 : 5000;
+  const totalCredits = planCredits + form.addon_credits;
+
+  const handleSubmit = async () => {
+    if (!form.name.trim() || !form.email.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await inviteUser(form);
+      if (res.success) {
+        setPasswordLink(res.password_link ?? null);
+        setResult({ success: true, message: res.message || 'Usuário criado com sucesso!' });
+        setForm({ name: '', email: '', plan: 'basic', role: 'user', addon_credits: 0 });
+        onSuccess?.();
+      } else {
+        setResult({ success: false, message: res.error || 'Erro ao enviar convite' });
+      }
+    } catch {
+      setResult({ success: false, message: 'Erro inesperado. Tente novamente.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -943,54 +1046,215 @@ function InviteModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95 }}
-        animate={{ scale: 1 }}
-        exit={{ scale: 0.95 }}
-        className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm p-8 border border-black/5"
+        initial={{ scale: 0.95, y: 10 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 10 }}
+        className="bg-white rounded-[32px] shadow-2xl w-full max-w-md p-8 border border-black/5"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display font-bold text-xl text-bluegray">Convidar Usuário</h2>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 text-bluegray/40">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-gold/10">
+              <UserPlus className="w-5 h-5 text-[#a06f5d]" />
+            </div>
+            <div>
+              <h2 className="font-display font-bold text-xl text-bluegray leading-none">
+                Cadastrar Novo Usuário
+              </h2>
+              <p className="text-[10px] text-bluegray/40 mt-0.5">
+                Gera link de acesso para o usuário
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-black/5 text-bluegray/40 transition-colors"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
+
         <div className="space-y-4">
+          {/* Nome */}
           <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-2 block">
+            <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
+              Nome Completo
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Nome do usuário"
+              className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm text-bluegray outline-none focus:ring-2 focus:ring-gold/20 placeholder:text-bluegray/30"
+            />
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
               E-mail
             </label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-bluegray/30" />
               <input
                 type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="novo@usuario.com"
-                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm text-bluegray outline-none focus:ring-2 focus:ring-gold/20"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="email@exemplo.com"
+                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm text-bluegray outline-none focus:ring-2 focus:ring-gold/20 placeholder:text-bluegray/30"
               />
             </div>
           </div>
-          <Button
-            variant="gold"
-            className="w-full py-3 gap-2"
-            onClick={() => {
-              if (email.includes('@')) {
-                setSent(true);
-                setTimeout(onClose, 900);
-              }
-            }}
-          >
-            {sent ? (
-              <>
-                <Check className="w-4 h-4" /> Enviado!
-              </>
-            ) : (
-              <>
-                <Mail className="w-4 h-4" /> Enviar Convite
-              </>
-            )}
-          </Button>
+
+          {/* Plano + Papel side by side */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
+                Plano
+              </label>
+              <select
+                value={form.plan}
+                onChange={e =>
+                  setForm(f => ({ ...f, plan: e.target.value as InviteUserParams['plan'] }))
+                }
+                className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm font-semibold text-bluegray outline-none focus:ring-2 focus:ring-gold/20 appearance-none cursor-pointer"
+              >
+                <option value="basic">Basic</option>
+                <option value="premium">Premium</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
+                Papel
+              </label>
+              <select
+                value={form.role}
+                onChange={e =>
+                  setForm(f => ({ ...f, role: e.target.value as InviteUserParams['role'] }))
+                }
+                className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm font-semibold text-bluegray outline-none focus:ring-2 focus:ring-gold/20 appearance-none cursor-pointer"
+              >
+                <option value="user">Usuário</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Créditos Addon */}
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
+              Créditos Extras (Addon)
+            </label>
+            <select
+              value={form.addon_credits}
+              onChange={e => setForm(f => ({ ...f, addon_credits: Number(e.target.value) }))}
+              className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm font-semibold text-bluegray outline-none focus:ring-2 focus:ring-gold/20 appearance-none cursor-pointer"
+            >
+              <option value={0}>Nenhum</option>
+              <option value={1000}>+1.000 créditos</option>
+              <option value={2000}>+2.000 créditos</option>
+              <option value={3000}>+3.000 créditos</option>
+              <option value={5000}>+5.000 créditos</option>
+            </select>
+          </div>
+
+          {/* Credit Summary */}
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-gold/5 border border-gold/20">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 mb-0.5">
+                Total de créditos no cadastro
+              </p>
+              <p className="text-xl font-display font-bold text-bluegray">
+                {totalCredits.toLocaleString('pt-BR')}
+                <span className="text-xs font-medium text-bluegray/40 ml-1">créditos</span>
+              </p>
+            </div>
+            <div className="text-right text-[10px] text-bluegray/40 space-y-0.5">
+              <p>{planCredits.toLocaleString('pt-BR')} do plano</p>
+              {form.addon_credits > 0 && (
+                <p className="text-[#a06f5d] font-semibold">
+                  +{form.addon_credits.toLocaleString('pt-BR')} addon
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Result feedback */}
+          {result && (
+            <div
+              className={cn(
+                'flex items-center gap-2 p-3 rounded-2xl text-sm border',
+                result.success
+                  ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                  : 'bg-red-50 border-red-100 text-red-600'
+              )}
+            >
+              {result.success ? (
+                <CheckCircle className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              {result.message}
+            </div>
+          )}
+
+          {/* Password link panel */}
+          {result?.success && passwordLink && (
+            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
+                  Link de acesso gerado
+                </p>
+              </div>
+              <p className="text-xs text-amber-700/70">
+                Compartilhe este link com o usuário via WhatsApp ou outro canal. Expira em 24h.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800 font-mono truncate">
+                  {passwordLink}
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(passwordLink);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-xl transition-colors"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? 'Copiado!' : 'Copiar'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-3 rounded-2xl border border-black/10 text-bluegray/50 text-sm font-semibold hover:bg-black/5 hover:text-bluegray/70 transition-all"
+            >
+              Cancelar
+            </button>
+            <Button
+              variant="gold"
+              className="flex-1 py-3 gap-2"
+              onClick={handleSubmit}
+              disabled={loading || !form.name.trim() || !form.email.trim()}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" /> Cadastrar Usuário
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </motion.div>
     </motion.div>
