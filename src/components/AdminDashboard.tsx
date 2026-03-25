@@ -185,7 +185,7 @@ export function AdminDashboard({ onExit }: { onExit: () => void }) {
             onClick={onExit}
             className={cn('transition-all', !sidebarOpen && 'opacity-0 pointer-events-none')}
           >
-            <img src={logoUrl} alt="MQPROMP" className="h-7 w-auto object-contain" />
+            <img src={logoUrl} alt="Render IA na Prática" className="h-7 w-auto object-contain" />
           </button>
           <button
             onClick={() => setSidebarOpen(v => !v)}

@@ -1,5 +1,5 @@
 // =============================================================================
-// MQPROMP — Tipos TypeScript gerados do schema Supabase
+// Render IA na Prática — Tipos TypeScript gerados do schema Supabase
 // Atualizar sempre que migrations forem aplicadas
 // =============================================================================
 

@@ -1,5 +1,5 @@
 // =============================================================================
-// MQPROMP — Admin Service
+// Render IA na Prática — Admin Service
 // Todas as queries administrativas ao Supabase (acesso via is_admin() RLS).
 // =============================================================================
 

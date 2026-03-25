@@ -7,7 +7,7 @@ describe('Setup de testes', () => {
   });
 
   it('TypeScript types funcionam', () => {
-    const value: string = 'mqpromp';
+    const value: string = 'render-ia-na-pratica';
     expect(typeof value).toBe('string');
   });
 });

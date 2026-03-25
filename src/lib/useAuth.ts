@@ -1,5 +1,5 @@
 // =============================================================================
-// MQPROMP — Hook de Autenticação Supabase
+// Render IA na Prática — Hook de Autenticação Supabase
 // Gerencia sessão, login, logout e estado do usuário.
 // =============================================================================
 

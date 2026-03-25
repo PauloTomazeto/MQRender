@@ -131,7 +131,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
 
   const handleDownload = useCallback(async () => {
     if (!generatedImg) return;
-    const filename = `mqpromp-${Date.now()}.png`;
+    const filename = `render-ia-${Date.now()}.png`;
     // If it's already a data URL, download directly
     if (generatedImg.startsWith('data:')) {
       const link = document.createElement('a');

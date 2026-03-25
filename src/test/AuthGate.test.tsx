@@ -25,7 +25,7 @@ describe('AuthGate', () => {
 
   it('renders email and password fields', () => {
     render(<AuthGate onSuccess={() => {}} />);
-    expect(screen.getByRole('img', { name: /MQPROMP/i })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Render IA na Prática/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('seu@email.com')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument();
   });

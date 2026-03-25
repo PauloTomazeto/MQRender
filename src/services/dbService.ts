@@ -1,5 +1,5 @@
 // =============================================================================
-// MQPROMP — Serviço de Banco de Dados (Supabase)
+// Render IA na Prática — Serviço de Banco de Dados (Supabase)
 // Camada de persistência para todos os dados gerados na aplicação.
 // =============================================================================
 

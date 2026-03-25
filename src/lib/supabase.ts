@@ -5,7 +5,7 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!url || !key) {
   throw new Error(
-    '[MQPROMP] Variáveis de ambiente ausentes: VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórias.'
+    '[Render IA] Variáveis de ambiente ausentes: VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórias.'
   );
 }
 

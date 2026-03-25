@@ -1,17 +1,17 @@
 {
-  "name": "mqpromp",
+  "name": "render-ia-na-pratica",
   "private": true,
   "version": "1.0.0",
-  "description": "Gerador de prompts de fotografia arquitetural de alta fidelidade.",
+  "description": "Render IA na Prática — Gerador de prompts de fotografia arquitetural de alta fidelidade.",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/PauloTomazeto/mqpromp.git"
+    "url": "git+https://github.com/PauloTomazeto/MQRender.git"
   },
   "bugs": {
-    "url": "https://github.com/PauloTomazeto/mqpromp/issues"
+    "url": "https://github.com/PauloTomazeto/MQRender/issues"
   },
-  "homepage": "https://github.com/PauloTomazeto/mqpromp#readme",
+  "homepage": "https://github.com/PauloTomazeto/MQRender#readme",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",

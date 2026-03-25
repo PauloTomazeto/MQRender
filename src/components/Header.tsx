@@ -24,7 +24,7 @@ export function Header({
     <header className="fixed top-0 left-0 w-full z-40 bg-white/80 backdrop-blur-md border-b border-black/5 px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="flex items-center">
-          <img src={logoUrl} alt="MQPROMP" className="h-10 w-auto object-contain" />
+          <img src={logoUrl} alt="Render IA na Prática" className="h-10 w-auto object-contain" />
         </div>
 
         <nav className="hidden md:flex items-center gap-8">

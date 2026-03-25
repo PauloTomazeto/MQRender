@@ -44,7 +44,11 @@ export function AuthGate({ onSuccess }: AuthGateProps) {
           <div className="absolute top-0 left-0 w-full h-1 gold-gradient" />
 
           <div className="flex flex-col items-center text-center mb-8">
-            <img src={logoUrl} alt="MQPROMP" className="h-16 w-auto object-contain mb-6" />
+            <img
+              src={logoUrl}
+              alt="Render IA na Prática"
+              className="h-16 w-auto object-contain mb-6"
+            />
             <p className="text-bluegray/60 text-sm">Entre com sua conta para acessar o Studio.</p>
           </div>
 
