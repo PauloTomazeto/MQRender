@@ -113,13 +113,13 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     )
   ).filter(Boolean);
 
+  // Prepend system instruction into user content (KIE API docs only show role: 'user')
+  const userContent = [{ type: 'input_text', text: MOVE_SYSTEM_INSTRUCTION }, ...kieContent];
+
   const body: any = {
     model: 'gpt-5-4',
     stream: false,
-    input: [
-      { role: 'system', content: [{ type: 'input_text', text: MOVE_SYSTEM_INSTRUCTION }] },
-      { role: 'user', content: kieContent },
-    ],
+    input: [{ role: 'user', content: userContent }],
   };
 
   if (schema) {
@@ -149,8 +149,31 @@ async function callGemini(contents: any, schema?: any): Promise<any> {
     },
     body: JSON.stringify(body),
   }).then(async res => {
-    if (!res.ok) throw new Error(`KIE API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    return res.json();
+    const rawText = await res.text();
+    if (!res.ok) throw new Error(`KIE API HTTP ${res.status}: ${rawText.slice(0, 200)}`);
+
+    // KIE API may return SSE format even with stream: false
+    const trimmed = rawText.trimStart();
+    if (trimmed.startsWith('event:') || trimmed.startsWith('data:')) {
+      const lines = rawText.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const jsonStr = line.slice(5).trim();
+        if (jsonStr === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.error ?? parsed.message) {
+            throw new Error(`KIE API erro: ${parsed.error ?? parsed.message}`);
+          }
+          if (parsed.output ?? parsed.status) return parsed;
+        } catch (e) {
+          if ((e as Error).message?.startsWith('KIE API erro')) throw e;
+        }
+      }
+      throw new Error('KIE API: resposta SSE sem dados válidos.');
+    }
+
+    return JSON.parse(rawText);
   });
 
   try {
