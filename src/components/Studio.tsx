@@ -52,6 +52,7 @@ import {
   analyzeDetailCloses,
   generateNanoBananaImage,
   generateNanoBanana2,
+  generateNanoBananaPro,
 } from '../services/geminiService';
 import { analyzeMoveImage, generateMovePrompts } from '../services/moveService';
 import { getUserCreditStatus, type CreditStatus } from '../services/creditService';
@@ -120,7 +121,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   // Geração de Imagem Premium
   const [genModel, setGenModel] = useState<'flash' | 'pro'>('flash');
   const [genAspect, setGenAspect] = useState<string>('16:9');
-  const [genRes, setGenRes] = useState<'1K' | '2K'>('1K');
+  const [genRes, setGenRes] = useState<'1K' | '2K' | '4K'>('1K');
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [generatedImg, setGeneratedImg] = useState<string | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
@@ -2615,7 +2616,17 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                   </span>
                   <span className="text-[10px] text-amber-500/70 font-medium">
                     · custo desta geração:{' '}
-                    {genModel === 'flash' ? (genRes === '2K' ? 12 : 8) : genRes === '2K' ? 24 : 16}{' '}
+                    {genModel === 'flash'
+                      ? genRes === '2K'
+                        ? 12
+                        : 8
+                      : genModel === 'pro'
+                        ? genRes === '4K'
+                          ? 48
+                          : 36
+                        : genRes === '2K'
+                          ? 24
+                          : 16}{' '}
                     créditos
                   </span>
                 </div>
@@ -2754,10 +2765,10 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                     Resolução (API)
                   </h3>
                   <div className="flex gap-4">
-                    {['1K', '2K'].map(res => (
+                    {(genModel === 'pro' ? ['1K', '2K', '4K'] : ['1K', '2K']).map(res => (
                       <button
                         key={res}
-                        onClick={() => setGenRes(res as '1K' | '2K')}
+                        onClick={() => setGenRes(res as '1K' | '2K' | '4K')}
                         className={cn(
                           'flex-1 py-3 px-4 rounded-xl border text-sm font-bold transition-all',
                           genRes === res
@@ -2800,7 +2811,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                     try {
                       const img =
                         genModel === 'pro'
-                          ? await generateNanoBanana2(
+                          ? await generateNanoBananaPro(
                               result.positive,
                               result.negative,
                               genAspect,
@@ -2811,7 +2822,7 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                               result.positive,
                               result.negative,
                               genAspect,
-                              genRes,
+                              genRes === '4K' ? '2K' : genRes,
                               image || undefined
                             );
                       setGeneratedImg(img);

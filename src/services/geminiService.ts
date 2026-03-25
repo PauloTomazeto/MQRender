@@ -836,6 +836,115 @@ export async function generateNanoBanana2(
   throw new Error('KIE.ai timeout: geração ultrapassou 3 minutos. Tente novamente.');
 }
 
+export async function generateNanoBananaPro(
+  prompt: string,
+  negativePrompt: string,
+  aspectRatio: string,
+  resolution: '1K' | '2K' | '4K',
+  imageRef?: string
+): Promise<string> {
+  const apiKey = getKieKey();
+
+  const fullPrompt =
+    `MODO NANO BANANA PRO — MÁXIMA FIDELIDADE FOTORREALISTA\n\n${prompt}\n\n` +
+    `REQUISITOS DE QUALIDADE PRO:\n` +
+    `- Fotografia arquitetural editorial de altíssima resolução\n` +
+    `- Microdetalhes de textura: poros de concreto, veios de madeira, reflexos especulares calibrados\n` +
+    `- Iluminação cinematográfica com gradiente de sombras suaves e penumbra precisa\n` +
+    `- Aberração cromática sutil nas bordas, grain de filme Kodak Portra 400\n` +
+    `- Profundidade de campo calculada: foco nítido no plano principal com bokeh progressivo\n` +
+    `- Resolução alvo: ${resolution === '4K' ? 'Ultra HD 4K' : resolution === '2K' ? 'Ultra HD 2K' : 'Alta definição 1K'}, Aspect Ratio ${aspectRatio}\n\n` +
+    `NEGATIVO ABSOLUTO (PROIBIDO): ${negativePrompt}`;
+
+  let tempPath: string | undefined;
+  const imageInput: string[] = [];
+
+  if (imageRef) {
+    try {
+      const { path, url } = await uploadTempImage(imageRef);
+      tempPath = path;
+      imageInput.push(url);
+    } catch (uploadErr) {
+      console.warn('KIE.ai: falha no upload da imagem de referência.', uploadErr);
+    }
+  }
+
+  const creditCost = await getCreditCost('nano-banana-pro', resolution);
+  const hasCredits = await checkCredits(creditCost);
+  if (!hasCredits) {
+    throw new Error(
+      'Créditos insuficientes. Considere adquirir um pacote adicional de 1.000 créditos.'
+    );
+  }
+
+  const createRes = await fetch(`${KIE_API_BASE}/createTask`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'nano-banana-pro',
+      input: {
+        prompt: fullPrompt,
+        ...(imageInput.length > 0 && { image_input: imageInput }),
+        aspect_ratio: aspectRatio,
+        resolution,
+        output_format: 'png',
+      },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`KIE.ai erro HTTP ${createRes.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const createData = await createRes.json();
+  if (createData.code !== 200) {
+    throw new Error(`KIE.ai erro ao criar task: ${createData.msg}`);
+  }
+
+  const { taskId } = createData.data;
+
+  for (let poll = 0; poll < KIE_MAX_POLLS; poll++) {
+    await new Promise(resolve => setTimeout(resolve, KIE_POLL_INTERVAL_MS));
+
+    const pollRes = await fetch(`${KIE_API_BASE}/recordInfo?taskId=${taskId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+
+    if (!pollRes.ok) continue;
+
+    const pollData = await pollRes.json();
+    const task = pollData.data;
+
+    if (!task) continue;
+
+    if (task.state === 'success') {
+      const result = JSON.parse(task.resultJson as string) as { resultUrls: string[] };
+      const url = result.resultUrls?.[0];
+      if (tempPath) deleteTempImage(tempPath);
+      if (!url) throw new Error('KIE.ai: geração concluída mas sem URL de imagem.');
+      await consumeCredits('nano-banana-pro', resolution);
+      return url;
+    }
+
+    if (task.state === 'fail') {
+      if (tempPath) deleteTempImage(tempPath);
+      throw new Error(
+        `KIE.ai geração falhou: ${task.failMsg || task.failCode || 'motivo desconhecido'}`
+      );
+    }
+
+    console.info(
+      `KIE.ai Pro [${poll + 1}/${KIE_MAX_POLLS}] state=${task.state} progress=${task.progress ?? '—'}%`
+    );
+  }
+
+  throw new Error('KIE.ai timeout: geração ultrapassou 3 minutos. Tente novamente.');
+}
+
 export async function generateNanoBananaImage(
   prompt: string,
   negativePrompt: string,
