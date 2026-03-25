@@ -864,3 +864,40 @@ export async function addAddonCredits(): Promise<{ success: boolean; error?: str
     return { success: false, error: String(err) };
   }
 }
+
+// =============================================================================
+// USER INVITES
+// =============================================================================
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  token: string;
+  expires_at: string;
+}
+
+export async function getPendingInviteByEmail(email: string): Promise<PendingInvite | null> {
+  const { data, error } = await supabase
+    .from('user_invites')
+    .select('id, email, token, expires_at')
+    .eq('email', email.toLowerCase())
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .single();
+
+  if (error || !data) return null;
+  return data as PendingInvite;
+}
+
+export async function getPendingInviteByToken(token: string): Promise<PendingInvite | null> {
+  const { data, error } = await supabase
+    .from('user_invites')
+    .select('id, email, token, expires_at')
+    .eq('token', token)
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .single();
+
+  if (error || !data) return null;
+  return data as PendingInvite;
+}

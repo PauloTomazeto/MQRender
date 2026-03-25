@@ -391,6 +391,19 @@ export interface AiCallLog {
   created_at: string;
 }
 
+export interface UserInvite {
+  id: string;
+  email: string;
+  token: string;
+  invited_by: string | null;
+  target_plan: string;
+  target_role: string;
+  expires_at: string;
+  used: boolean;
+  used_at: string | null;
+  created_at: string;
+}
+
 // =============================================================================
 // DATABASE TYPE MAP (para o cliente Supabase tipado)
 // =============================================================================
@@ -507,6 +520,11 @@ export interface Database {
         Row: AiCallLog;
         Insert: Omit<AiCallLog, 'id' | 'created_at'>;
         Update: Partial<AiCallLog>;
+      };
+      user_invites: {
+        Row: UserInvite;
+        Insert: Omit<UserInvite, 'id' | 'created_at'>;
+        Update: Partial<UserInvite>;
       };
       credit_config: {
         Row: CreditConfig;

@@ -7,6 +7,7 @@ import { Studio } from './components/Studio';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ResetPassword } from './components/ResetPassword';
 import { AcessoRelay } from './components/AcessoRelay';
+import { AcceptInvite } from './components/AcceptInvite';
 import { useAuth, signOut } from './lib/useAuth';
 import { getUserCreditStatus, type CreditStatus } from './services/creditService';
 
@@ -54,6 +55,11 @@ export default function App() {
   // Detect /acesso relay (branded access link from admin)
   if (window.location.pathname === '/acesso') {
     return <AcessoRelay />;
+  }
+
+  // Detect /accept-invite (new user creates password)
+  if (window.location.pathname === '/accept-invite') {
+    return <AcceptInvite onSuccess={() => {}} />;
   }
 
   // Detect password reset flow from URL (hash or query param from Supabase)
