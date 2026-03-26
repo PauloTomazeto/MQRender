@@ -349,13 +349,20 @@ export async function getPlansWithStats(): Promise<PlanStat[]> {
 export async function getSubscriptionSummary() {
   const { data: subs } = await supabase
     .from('subscriptions')
-    .select('status, subscription_plans(price_monthly)')
+    .select('plan_id, status')
     .eq('status', 'active');
 
+  const planIds = (subs ?? []).map((s: any) => s.plan_id).filter(Boolean);
+  const { data: plans } = planIds.length
+    ? await supabase.from('subscription_plans').select('id, price_monthly').in('id', planIds)
+    : { data: [] };
+
+  const planMap = new Map((plans ?? []).map((p: any) => [p.id, p]));
   const revenue = (subs ?? []).reduce(
-    (acc: number, s: any) => acc + (s.subscription_plans?.price_monthly ?? 0),
+    (acc: number, s: any) => acc + (planMap.get(s.plan_id)?.price_monthly ?? 0),
     0
   );
+
   const { count: total } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true });
@@ -380,7 +387,7 @@ export async function getAiLogs(filters?: {
   let query = supabase
     .from('ai_call_logs')
     .select(
-      'id, created_at, user_id, service, status, input_tokens, output_tokens, response_time_ms, profiles(email)'
+      'id, created_at, user_id, service, status, input_tokens, output_tokens, response_time_ms'
     )
     .order('created_at', { ascending: false })
     .limit(100);
@@ -392,10 +399,19 @@ export async function getAiLogs(filters?: {
     query = query.eq('status', filters.status);
   }
 
-  const { data } = await query;
-  if (!data) return [];
+  const { data: logs, error } = await query;
+  if (error) {
+    console.error('[adminService] getAiLogs error:', error);
+    return [];
+  }
+  if (!logs || logs.length === 0) return [];
 
-  return data.map((l: any) => ({
+  const userIds = [...new Set(logs.map((l: any) => l.user_id))];
+  const { data: profiles } = await supabase.from('profiles').select('id, email').in('id', userIds);
+
+  const emailMap = new Map((profiles ?? []).map((p: any) => [p.id, p.email]));
+
+  return logs.map((l: any) => ({
     id: l.id,
     created_at: l.created_at,
     user_id: l.user_id,
@@ -406,7 +422,7 @@ export async function getAiLogs(filters?: {
     tokens_out: l.output_tokens,
     cost_usd: null,
     response_ms: l.response_time_ms,
-    user_email: l.profiles?.email ?? null,
+    user_email: emailMap.get(l.user_id) ?? null,
   }));
 }
 
@@ -540,7 +556,7 @@ export async function adminAddAddonToUser(userId: string): Promise<void> {
 export async function getCreditTransactions(userId?: string, limit = 50): Promise<any[]> {
   let query = supabase
     .from('credit_transactions')
-    .select('*, profiles(email, name)')
+    .select('id, user_id, amount, type, model, resolution, description, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -548,13 +564,25 @@ export async function getCreditTransactions(userId?: string, limit = 50): Promis
     query = query.eq('user_id', userId);
   }
 
-  const { data, error } = await query;
-  if (error || !data) return [];
+  const { data: transactions, error } = await query;
+  if (error) {
+    console.error('[adminService] getCreditTransactions error:', error);
+    return [];
+  }
+  if (!transactions || transactions.length === 0) return [];
 
-  return data.map((t: any) => ({
+  const userIds = [...new Set(transactions.map((t: any) => t.user_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, email, name')
+    .in('id', userIds);
+
+  const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+
+  return transactions.map((t: any) => ({
     ...t,
-    user_email: t.profiles?.email ?? null,
-    user_name: t.profiles?.name ?? null,
+    user_email: profileMap.get(t.user_id)?.email ?? null,
+    user_name: profileMap.get(t.user_id)?.name ?? null,
   }));
 }
 

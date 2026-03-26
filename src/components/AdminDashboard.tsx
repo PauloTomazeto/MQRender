@@ -138,7 +138,10 @@ function useAsync<T>(
         setData(d);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(err => {
+        console.error('[useAsync] error:', err);
+        setLoading(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
