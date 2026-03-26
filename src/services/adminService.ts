@@ -596,10 +596,21 @@ export async function inviteUser(params: InviteUserParams): Promise<InviteUserRe
     body: JSON.stringify(params),
   });
 
-  const result = await response.json();
+  let result: any;
+  try {
+    result = await response.json();
+  } catch {
+    return {
+      success: false,
+      error: `Erro HTTP ${response.status}: resposta inválida do servidor.`,
+    };
+  }
 
   if (!response.ok) {
-    return { success: false, error: result.error || 'Falha ao convidar usuário' };
+    const errMsg =
+      result?.error || result?.message || result?.details || `Erro HTTP ${response.status}`;
+    console.error('[inviteUser] Edge Function error:', response.status, result);
+    return { success: false, error: errMsg };
   }
 
   // Transform raw Supabase recovery URL into branded access link

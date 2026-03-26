@@ -88,7 +88,8 @@ serve(async (req) => {
     })
 
     if (createError) {
-      return new Response(JSON.stringify({ error: createError.message }), {
+      console.error('createUser error:', createError)
+      return new Response(JSON.stringify({ error: `Erro ao criar usuário: ${createError.message}` }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
@@ -162,12 +163,12 @@ serve(async (req) => {
     const { data: planData, error: planError } = await supabaseAdmin
       .from('subscription_plans')
       .select('id, credits_monthly')
-      .eq('name', plan)
+      .ilike('name', plan)
       .single()
 
     if (planError || !planData) {
-      console.error('Plan query error:', planError)
-      return new Response(JSON.stringify({ error: `Plan "${plan}" not found. DB error: ${planError?.message}` }), {
+      console.error('Plan query error:', planError, '| plan name tried:', plan)
+      return new Response(JSON.stringify({ error: `Plano "${plan}" não encontrado no banco. Verifique se o plano está cadastrado em subscription_plans. DB: ${planError?.message ?? 'no rows'}` }), {
         status: 400, headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' }
       })
     }
