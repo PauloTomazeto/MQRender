@@ -223,6 +223,20 @@ export interface MirrorConfig {
   reflectionDescription?: string;
 }
 
+export interface TextureRef {
+  materialIndex: number; // índice em scan.materials[]
+  elemento: string; // label do material, ex: "Piso de Granito"
+  image: string | null; // base64 data URL
+  description: string; // descrição gerada pela IA
+  loading: boolean; // true enquanto a IA analisa
+  error: string | null; // erro por slot
+}
+
+export interface TextureRefForPrompt {
+  elemento: string;
+  description: string;
+}
+
 export interface PromptConfig {
   mode: 'single' | 'blocks';
   cinematicMode?: string;

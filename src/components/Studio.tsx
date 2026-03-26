@@ -43,6 +43,8 @@ import type {
   MoveScanResult,
   MoveConfig,
   MoveOutput,
+  TextureRef,
+  TextureRefForPrompt,
 } from '../types';
 import { LightPointConfig, MirrorConfig } from '../types';
 import {
@@ -50,6 +52,7 @@ import {
   generatePrompt,
   analyzePostProduction,
   analyzeDetailCloses,
+  analyzeTexture,
   generateNanoBananaImage,
   generateNanoBanana2,
   generateNanoBananaPro,
@@ -129,6 +132,8 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
   const [detailScanResult, setDetailScanResult] = useState<DetailScanResult | null>(null);
   const [detailImage, setDetailImage] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [textureRefs, setTextureRefs] = useState<TextureRef[]>([]);
+  const [textureObservations, setTextureObservations] = useState<string>('');
 
   const handleDownload = useCallback(async () => {
     if (!generatedImg) return;
@@ -239,6 +244,23 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
           ...prev,
           ...updates,
         }));
+      }
+
+      // Initialize texture ref slots for each detected material
+      if (!scan.isFloorPlan && scan.materials?.length > 0) {
+        setTextureRefs(
+          scan.materials.map((mat, idx) => ({
+            materialIndex: idx,
+            elemento: mat.elemento,
+            image: null,
+            description: '',
+            loading: false,
+            error: null,
+          }))
+        );
+        setTextureObservations('');
+      } else {
+        setTextureRefs([]);
       }
     }
   }, [scan]);
@@ -376,7 +398,16 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
     setLoading(true);
     setError(null);
     try {
-      const promptResult = await generatePrompt(scan, config, image);
+      const textureRefsForPrompt: TextureRefForPrompt[] = textureRefs
+        .filter(tr => tr.description)
+        .map(tr => ({ elemento: tr.elemento, description: tr.description }));
+      const promptResult = await generatePrompt(
+        scan,
+        config,
+        image,
+        textureRefsForPrompt,
+        textureObservations.trim() || undefined
+      );
       setResult(promptResult);
       setStep('result');
     } catch (err) {
@@ -397,7 +428,16 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
     setError(null);
     try {
       const configWithNote = { ...config, refinementNote: promptNote.trim() };
-      const promptResult = await generatePrompt(scan, configWithNote, image);
+      const textureRefsForPrompt: TextureRefForPrompt[] = textureRefs
+        .filter(tr => tr.description)
+        .map(tr => ({ elemento: tr.elemento, description: tr.description }));
+      const promptResult = await generatePrompt(
+        scan,
+        configWithNote,
+        image,
+        textureRefsForPrompt,
+        textureObservations.trim() || undefined
+      );
       setResult(promptResult);
       setPromptNote('');
     } catch (err) {
@@ -423,6 +463,47 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
       }));
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleTextureImageUpload = (e: React.ChangeEvent<HTMLInputElement>, slotIndex: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async event => {
+      const base64 = event.target?.result as string;
+      setTextureRefs(prev =>
+        prev.map((r, i) =>
+          i === slotIndex ? { ...r, image: base64, description: '', loading: true, error: null } : r
+        )
+      );
+      try {
+        const description = await analyzeTexture(base64);
+        setTextureRefs(prev =>
+          prev.map((r, i) => (i === slotIndex ? { ...r, description, loading: false } : r))
+        );
+      } catch (err) {
+        setTextureRefs(prev =>
+          prev.map((r, i) =>
+            i === slotIndex
+              ? {
+                  ...r,
+                  loading: false,
+                  error: err instanceof Error ? err.message : 'Falha ao analisar textura.',
+                }
+              : r
+          )
+        );
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleTextureRemove = (slotIndex: number) => {
+    setTextureRefs(prev =>
+      prev.map((r, i) =>
+        i === slotIndex ? { ...r, image: null, description: '', loading: false, error: null } : r
+      )
+    );
   };
 
   const handleGeneratedFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2071,6 +2152,111 @@ export function Studio({ forcedStep }: { forcedStep?: AppStep }) {
                             ))}
                           </div>
                         </div>
+
+                        {/* ── Texturas de Referência ── */}
+                        {textureRefs.length > 0 && (
+                          <div className="space-y-6 pt-6 border-t border-black/5">
+                            <div className="flex items-center gap-2">
+                              <Palette className="w-3 h-3 text-gold" />
+                              <h3 className="text-xs font-bold uppercase tracking-widest text-bluegray/40">
+                                Texturas de Referência
+                              </h3>
+                            </div>
+                            <p className="text-[10px] text-bluegray/40 font-medium leading-relaxed">
+                              Anexe uma foto do material real para cada elemento identificado. A IA
+                              irá descrever a textura e incorporá-la ao prompt gerado.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              {textureRefs.map((ref, idx) => (
+                                <div key={idx} className="space-y-2">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-bluegray/50 truncate">
+                                    {ref.elemento}
+                                  </p>
+
+                                  <div className="relative group">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={e => handleTextureImageUpload(e, idx)}
+                                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                    />
+                                    <div
+                                      className={cn(
+                                        'aspect-square rounded-xl bg-offwhite border border-dashed border-bluegray/10',
+                                        'flex flex-col items-center justify-center p-3 text-center transition-all',
+                                        'group-hover:border-gold/30',
+                                        ref.image && 'border-solid border-gold/50 bg-gold/5'
+                                      )}
+                                    >
+                                      {ref.image ? (
+                                        <img
+                                          src={ref.image}
+                                          alt={ref.elemento}
+                                          className="w-full h-full object-cover rounded-lg"
+                                        />
+                                      ) : (
+                                        <>
+                                          <ImagePlus className="w-4 h-4 text-gold mb-1" />
+                                          <p className="text-[9px] font-bold uppercase tracking-widest text-bluegray/40">
+                                            Adicionar textura
+                                          </p>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {ref.image && !ref.loading && (
+                                    <button
+                                      onClick={() => handleTextureRemove(idx)}
+                                      className="text-[9px] font-bold uppercase tracking-widest text-bluegray/30 hover:text-red-400 transition-colors"
+                                    >
+                                      Remover
+                                    </button>
+                                  )}
+
+                                  {ref.loading && (
+                                    <div className="flex items-center gap-1.5 py-1">
+                                      <Loader2 className="w-3 h-3 animate-spin text-gold" />
+                                      <span className="text-[9px] font-bold uppercase tracking-widest text-gold">
+                                        Analisando...
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {ref.error && (
+                                    <div className="flex items-start gap-1.5 p-2 rounded-lg bg-red-50 border border-red-100">
+                                      <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+                                      <p className="text-[9px] text-red-500 leading-snug">
+                                        {ref.error}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {ref.description && !ref.loading && (
+                                    <div className="p-2.5 rounded-xl bg-offwhite border border-black/5">
+                                      <p className="text-[9px] text-bluegray/60 leading-relaxed line-clamp-3">
+                                        {ref.description}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="space-y-2 pt-4 border-t border-black/5">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-bluegray/40">
+                                Observações sobre Texturas
+                              </label>
+                              <textarea
+                                placeholder="Notas gerais sobre acabamentos, padrões ou combinações de materiais..."
+                                value={textureObservations}
+                                onChange={e => setTextureObservations(e.target.value)}
+                                className="w-full h-20 p-3 rounded-xl bg-offwhite border border-black/5 text-sm focus:outline-none focus:border-gold/50 transition-all resize-none"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </Card>
 
                       <div className="space-y-6">

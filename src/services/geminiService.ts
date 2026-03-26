@@ -1,6 +1,12 @@
 import type { GenerateContentResponse } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
-import type { ScanResult, PromptOutput, PostProductionResult, DetailScanResult } from '../types';
+import type {
+  ScanResult,
+  PromptOutput,
+  PostProductionResult,
+  DetailScanResult,
+  TextureRefForPrompt,
+} from '../types';
 import {
   ScanResultSchema,
   DetailScanResultSchema,
@@ -270,6 +276,35 @@ export async function analyzeDetailCloses(base64Image: string): Promise<DetailSc
   }
 }
 
+export async function analyzeTexture(base64Image: string): Promise<string> {
+  const getImageData = (base64: string) => {
+    const match = base64.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return { mimeType: 'image/jpeg', data: base64.split(',')[1] || base64 };
+    return { mimeType: match[1], data: match[2] };
+  };
+  const imageData = getImageData(base64Image);
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        {
+          text: `Analise esta imagem de textura de material de construção/decoração. Descreva com precisão fotográfica e técnica:
+1. COR BASE: Tom exato, saturação, temperatura de cor, variação tonal (albedo).
+2. PADRÃO DE SUPERFÍCIE: Veios, tramas, poros, manchas, repetição de padrão.
+3. ACABAMENTO: Tipo (fosco/acetinado/polido/natural) e intensidade de brilho estimada.
+4. MICRO-RELEVO (BUMP): Textura táctil — saliências, ranhuras, juntas, espessura, profundidade.
+5. COMPORTAMENTO DE LUZ: Como difunde, reflete e absorve luz? Especifica se é lambertiana, especular, anisotrópica.
+Formate como parágrafo único denso e fotográfico, pronto para prompt de geração de imagem.`,
+        },
+        { inlineData: { mimeType: imageData.mimeType, data: imageData.data } },
+      ],
+    },
+  ];
+  const text = await callGemini(contents);
+  if (!text || typeof text !== 'string') throw new Error('IA não retornou descrição de textura.');
+  return text.trim();
+}
+
 export async function analyzeImage(base64Image: string): Promise<ScanResult> {
   const getImageData = (base64: string) => {
     const match = base64.match(/^data:([^;]+);base64,(.+)$/);
@@ -462,7 +497,9 @@ export async function analyzeImage(base64Image: string): Promise<ScanResult> {
 export async function generatePrompt(
   scan: ScanResult,
   config: any,
-  base64Image: string
+  base64Image: string,
+  textureRefs?: TextureRefForPrompt[],
+  textureObservations?: string
 ): Promise<PromptOutput> {
   try {
     const promptText =
@@ -553,6 +590,15 @@ export async function generatePrompt(
       [FOTORREALISMO] O prompt positivo DEVE incluir: "fotorealista, fotografia RAW, Canon EOS R5, 35mm, fotografia de interiores arquitetônica, iluminação natural, 8K, DSLR, foto real da vida real"
       [NEGATIVE OBRIGATÓRIO] O Negative Prompt DEVE incluir no mínimo: "CGI, render, 3D render, unreal engine, octane render, vray, blender, digital art, artificial lighting, studio lighting, harsh shadows, oversaturated, low quality, blurry, distorted, watermark, text, people, illustration, painting, sketch, cartoon, plastic texture, fake, synthetic, computer generated, sketchup, maquete, maquette, architectural model, clay render, wireframe, added windows, added doors, added openings, extra furniture, invented objects, hallucinated elements, curtains where there are walls, blinds on solid walls"
       ${config.mirror?.enabled ? `[ESPELHO] Espelho em: ${config.mirror.location}. Segunda imagem = reflexo.` : ''}
+      ${
+        textureRefs && textureRefs.filter(tr => tr.description).length > 0
+          ? `[TEXTURAS DE REFERÊNCIA — PRIORIDADE ALTA] O usuário forneceu imagens reais dos materiais. Incorpore ao prompt com precisão máxima, sobrescrevendo generalizações com estes detalhes específicos:\n${textureRefs
+              .filter(tr => tr.description)
+              .map(tr => `- ${tr.elemento}: ${tr.description}`)
+              .join('\n')}`
+          : ''
+      }
+      ${textureObservations ? `[OBSERVAÇÕES DO USUÁRIO SOBRE TEXTURAS] O usuário fez as seguintes anotações sobre as texturas da cena. Incorpore-as no prompt: "${textureObservations}"` : ''}
       ${config.refinementNote ? `[REFINAMENTO DO USUÁRIO — PRIORIDADE MÁXIMA] O usuário solicitou as seguintes alterações específicas no prompt. Incorpore-as obrigatoriamente, mantendo todas as demais regras: "${config.refinementNote}"` : ''}
       A primeira imagem é a CENA BASE.`,
       },
