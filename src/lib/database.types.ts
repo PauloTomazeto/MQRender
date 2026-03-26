@@ -616,6 +616,7 @@ export interface Database {
         Returns: void;
       };
       get_user_credit_status: { Args: { p_user_id: string }; Returns: Json };
+      clear_must_change_password: { Args: Record<never, never>; Returns: void };
     };
     Enums: Record<string, never>;
   };

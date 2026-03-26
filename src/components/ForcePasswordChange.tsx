@@ -47,12 +47,10 @@ export function ForcePasswordChange({ userEmail, userName, onSuccess }: ForcePas
     try {
       await updatePassword(password);
 
-      // Clear the must_change_password flag in the profile
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('profiles').update({ must_change_password: false }).eq('id', user.id);
+      // Clear the must_change_password flag in the profile via RPC to bypass RLS issues
+      const { error: profileError } = await supabase.rpc('clear_must_change_password');
+      if (profileError) {
+        throw new Error('Erro ao atualizar perfil (RPC): ' + profileError.message);
       }
 
       setSuccess(true);
