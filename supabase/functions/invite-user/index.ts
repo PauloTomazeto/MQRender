@@ -24,14 +24,7 @@ serve(async (req) => {
   }
 
   try {
-    // Initialize Supabase admin client (service role)
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    )
-
-    // Verify caller is authenticated admin
+    // Verify caller is authenticated using a normal client with the auth header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
@@ -39,14 +32,26 @@ serve(async (req) => {
       })
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    const supabaseAuthClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    const { data: { user: caller }, error: authError } = await supabaseAuthClient.auth.getUser()
 
     if (authError || !caller) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
+
+    // Initialize Supabase admin client (service role)
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
 
     // Check if caller is admin — via JWT app_metadata (primary) or profiles table (fallback)
     const jwtRole = caller.app_metadata?.role ?? caller.user_metadata?.role
