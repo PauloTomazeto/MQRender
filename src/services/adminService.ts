@@ -602,19 +602,36 @@ export interface CreateUserResult {
 }
 
 export async function createUser(params: CreateUserParams): Promise<CreateUserResult> {
-  const { data, error } = await supabase.functions.invoke('invite-user', {
-    body: params,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-  if (error) {
-    const body = (error as any)?.context ?? {};
-    const errMsg =
-      body?.error || body?.message || body?.details || error.message || 'Falha ao criar usuário';
-    console.error('[createUser] Edge Function error:', error, body);
-    return { success: false, error: errMsg };
+  try {
+    const { data, error } = await supabase.functions.invoke('invite-user', {
+      body: params,
+      signal: controller.signal,
+    });
+
+    if (error) {
+      const body = (error as any)?.context ?? {};
+      const errMsg =
+        body?.error || body?.message || body?.details || error.message || 'Falha ao criar usuário';
+      console.error('[createUser] Edge Function error:', error, body);
+      return { success: false, error: errMsg };
+    }
+
+    return data;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      return {
+        success: false,
+        error:
+          'Timeout: a operação demorou muito. Verifique se o usuário foi criado antes de tentar novamente.',
+      };
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return data;
 }
 
 export async function getReportKPIs() {

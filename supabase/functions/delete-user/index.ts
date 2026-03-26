@@ -58,7 +58,8 @@ serve(async (req) => {
       .eq('id', caller.id)
       .single()
 
-    if (callerProfile?.role !== 'admin') {
+    const isAdmin = callerProfile?.role === 'admin' || caller.app_metadata?.role === 'admin'
+    if (!isAdmin) {
       return new Response(JSON.stringify({ error: 'Forbidden: admin access required' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })

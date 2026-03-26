@@ -74,11 +74,29 @@ serve(async (req) => {
       })
     }
 
+    // Step 1: Validate plan exists BEFORE creating user to avoid partial state
+    const PLAN_CREDITS: Record<string, number> = { basic: 1000, premium: 2000, enterprise: 5000 }
+
+    const { data: planData, error: planError } = await supabaseAdmin
+      .from('subscription_plans')
+      .select('id, credits_monthly')
+      .eq('name', plan.toLowerCase())
+      .single()
+
+    if (planError || !planData) {
+      console.error('Plan query error:', planError, '| plan name tried:', plan)
+      return new Response(JSON.stringify({ error: `Plano "${plan}" não encontrado no banco. Verifique se o plano está cadastrado em subscription_plans. DB: ${planError?.message ?? 'no rows'}` }), {
+        status: 400, headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' }
+      })
+    }
+
+    const planCredits = planData.credits_monthly ?? PLAN_CREDITS[plan] ?? 1000
+
     // Generate temporary password: FirstName + "2026"
     const firstName = name.trim().split(/\s+/)[0]
     const tempPassword = `${firstName}2026`
 
-    // Step 1: Create user with temporary password
+    // Step 2: Create user with temporary password
     // created_by_admin=true signals the DB trigger to set must_change_password=true
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -101,7 +119,7 @@ serve(async (req) => {
 
     const newUserId = userData.user.id
 
-    // Step 2: Upsert profile as safety net (handle_new_user trigger already fired synchronously)
+    // Step 3: Upsert profile as safety net (handle_new_user trigger already fired synchronously)
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert({
@@ -117,24 +135,6 @@ serve(async (req) => {
     if (profileError) {
       console.error('Profile upsert error:', profileError)
     }
-
-    // Step 3: Get the plan_id for the selected plan
-    const PLAN_CREDITS: Record<string, number> = { basic: 1000, premium: 2000, enterprise: 5000 }
-
-    const { data: planData, error: planError } = await supabaseAdmin
-      .from('subscription_plans')
-      .select('id, credits_monthly')
-      .eq('name', plan.toLowerCase())
-      .single()
-
-    if (planError || !planData) {
-      console.error('Plan query error:', planError, '| plan name tried:', plan)
-      return new Response(JSON.stringify({ error: `Plano "${plan}" não encontrado no banco. Verifique se o plano está cadastrado em subscription_plans. DB: ${planError?.message ?? 'no rows'}` }), {
-        status: 400, headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' }
-      })
-    }
-
-    const planCredits = planData.credits_monthly ?? PLAN_CREDITS[plan] ?? 1000
 
     // Step 4: Create subscription
     const now = new Date()
