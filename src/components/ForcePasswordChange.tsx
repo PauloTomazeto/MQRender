@@ -18,7 +18,6 @@ export function ForcePasswordChange({ userEmail, userName, onSuccess }: ForcePas
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
 
   const firstName = userName.trim().split(/\s+/)[0];
   const tempPassword = `${firstName}2026`;
@@ -47,17 +46,7 @@ export function ForcePasswordChange({ userEmail, userName, onSuccess }: ForcePas
     try {
       await updatePassword(password);
 
-      // Clear the must_change_password flag in the profile via RPC to bypass RLS issues
-      const { error: profileError } = await supabase.rpc('clear_must_change_password');
-      if (profileError) {
-        throw new Error('Erro ao atualizar perfil (RPC): ' + profileError.message);
-      }
-
-      setSuccess(true);
-
-      setTimeout(() => {
-        onSuccess();
-      }, 1500);
+      onSuccess();
     } catch (err: unknown) {
       let errorMessage = 'Erro ao atualizar senha. Tente novamente.';
       if (err instanceof Error) {
@@ -72,43 +61,7 @@ export function ForcePasswordChange({ userEmail, userName, onSuccess }: ForcePas
       setLoading(false);
     }
   };
-
   const isValid = password.length >= 6 && password === confirmPassword && !loading;
-
-  if (success) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-offwhite/95 backdrop-blur-xl p-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="w-full max-w-md"
-        >
-          <Card className="relative overflow-hidden border-none shadow-2xl bg-white p-8 text-center">
-            <div className="absolute top-0 left-0 w-full h-1 gold-gradient" />
-
-            <div className="flex flex-col items-center gap-4 mb-6">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', damping: 10 }}
-              >
-                <CheckCircle className="w-16 h-16 text-green-500" />
-              </motion.div>
-              <h2 className="text-2xl font-bold text-bluegray">Senha atualizada!</h2>
-              <p className="text-bluegray/60 text-sm">
-                Sua nova senha foi definida. Entrando no Studio...
-              </p>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-bluegray/30">
-              <ShieldCheck className="w-3 h-3" />
-              <span>Acesso seguro</span>
-            </div>
-          </Card>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-offwhite/95 backdrop-blur-xl p-4">
