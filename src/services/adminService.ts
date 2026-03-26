@@ -298,28 +298,20 @@ export async function updateUserPlan(userId: string, planName: string): Promise<
 }
 
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { success: false, error: 'Not authenticated' };
+  await supabase.auth.refreshSession();
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ user_id: userId }),
+  const { data, error } = await supabase.functions.invoke('delete-user', {
+    body: { user_id: userId },
   });
 
-  const result = await response.json();
-
-  if (!response.ok) {
-    return { success: false, error: result.error || 'Falha ao excluir usuário' };
+  if (error) {
+    const body = (error as any)?.context ?? {};
+    const errMsg = body?.error || body?.message || error.message || 'Falha ao excluir usuário';
+    console.error('[deleteUser] error:', error, body);
+    return { success: false, error: errMsg };
   }
 
-  return { success: true };
+  return data ?? { success: true };
 }
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
