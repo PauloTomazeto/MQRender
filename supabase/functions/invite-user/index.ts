@@ -24,24 +24,10 @@ serve(async (req) => {
   }
 
   try {
-    // Verify caller is authenticated using a normal client with the auth header
+    // Verify caller is authenticated by parsing the Authorization header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    const supabaseAuthClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    )
-
-    const { data: { user: caller }, error: authError } = await supabaseAuthClient.auth.getUser()
-
-    if (authError || !caller) {
-      return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
@@ -53,18 +39,25 @@ serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Check if caller is admin — via JWT app_metadata (primary) or profiles table (fallback)
-    const jwtRole = caller.app_metadata?.role ?? caller.user_metadata?.role
-    let isAdmin = jwtRole === 'admin'
+    // Use service role client to validate the user JWT - this is the correct way in Edge Functions
+    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
 
-    if (!isAdmin) {
-      const { data: callerProfile } = await supabaseAdmin
-        .from('profiles')
-        .select('role')
-        .eq('id', caller.id)
-        .single()
-      isAdmin = callerProfile?.role === 'admin'
+    if (authError || !caller) {
+      return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
+
+    // Check if caller is admin via profiles table (most reliable source)
+    const { data: callerProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', caller.id)
+      .single()
+
+    const isAdmin = callerProfile?.role === 'admin' || caller.app_metadata?.role === 'admin'
 
     if (!isAdmin) {
       return new Response(JSON.stringify({ error: 'Forbidden: admin access required' }), {
@@ -131,7 +124,7 @@ serve(async (req) => {
     const { data: planData, error: planError } = await supabaseAdmin
       .from('subscription_plans')
       .select('id, credits_monthly')
-      .ilike('name', plan)
+      .eq('name', plan.toLowerCase())
       .single()
 
     if (planError || !planData) {

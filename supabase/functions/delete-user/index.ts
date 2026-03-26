@@ -33,26 +33,23 @@ serve(async (req) => {
       })
     }
 
-    const supabaseAuthClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    )
-
-    const { data: { user: caller }, error: authError } = await supabaseAuthClient.auth.getUser()
-
-    if (authError || !caller) {
-      console.error('Auth error in Edge Function:', authError, 'caller:', caller);
-      return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
+    // Initialize Supabase admin client (service role)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
+
+    // Use service role client to validate the user JWT - this is the correct way in Edge Functions
+    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !caller) {
+      return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
     // Check if caller is admin
     const { data: callerProfile } = await supabaseAdmin
