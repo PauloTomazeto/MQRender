@@ -41,14 +41,22 @@ serve(async (req) => {
     )
 
     // Use service role client to validate the user JWT - this is the correct way in Edge Functions
-    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(token)
 
     if (authError || !caller) {
-      return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      console.error('[delete-user] JWT validation failed:', {
+        error: authError?.message,
+        hint: 'Token must be a valid user JWT with sub claim',
+        tokenLength: token.length,
       })
+      return new Response(
+        JSON.stringify({
+          error: authError?.message || 'Unauthorized',
+          details: 'Invalid JWT token. Ensure you are logged in as admin.',
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Check if caller is admin

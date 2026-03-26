@@ -298,18 +298,40 @@ export async function updateUserPlan(userId: string, planName: string): Promise<
 }
 
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await supabase.functions.invoke('delete-user', {
-    body: { user_id: userId },
-  });
+  try {
+    // Get the current session to ensure we have a valid JWT
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-  if (error) {
-    const body = (error as any)?.context ?? {};
-    const errMsg = body?.error || body?.message || error.message || 'Falha ao excluir usuário';
-    console.error('[deleteUser] error:', error, body);
-    return { success: false, error: errMsg };
+    if (!session) {
+      console.error('[deleteUser] No active session found');
+      return {
+        success: false,
+        error: 'Sessão expirada. Por favor, faça login novamente.',
+      };
+    }
+
+    const { data, error } = await supabase.functions.invoke('delete-user', {
+      body: { user_id: userId },
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (error) {
+      const body = (error as any)?.context ?? {};
+      const errMsg = body?.error || body?.message || error.message || 'Falha ao excluir usuário';
+      console.error('[deleteUser] error:', error, body);
+      return { success: false, error: errMsg };
+    }
+
+    return data ?? { success: true };
+  } catch (err) {
+    console.error('[deleteUser] exception:', err);
+    return { success: false, error: 'Erro ao excluir usuário' };
   }
-
-  return data ?? { success: true };
 }
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
@@ -606,9 +628,26 @@ export async function createUser(params: CreateUserParams): Promise<CreateUserRe
   const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
+    // Get the current session to ensure we have a valid JWT
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      console.error('[createUser] No active session found');
+      return {
+        success: false,
+        error: 'Sessão expirada. Por favor, faça login novamente.',
+      };
+    }
+
     const { data, error } = await supabase.functions.invoke('invite-user', {
       body: params,
       signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
     });
 
     if (error) {
