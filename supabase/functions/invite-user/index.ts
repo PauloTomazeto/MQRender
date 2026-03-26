@@ -103,9 +103,7 @@ serve(async (req) => {
 
     const newUserId = userData.user.id
 
-    // Step 2: Wait for trigger to fire then upsert profile as safety net
-    await new Promise(resolve => setTimeout(resolve, 500))
-
+    // Step 2: Upsert profile as safety net (handle_new_user trigger already fired synchronously)
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert({

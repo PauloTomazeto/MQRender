@@ -581,6 +581,9 @@ export interface CreateUserResult {
 }
 
 export async function createUser(params: CreateUserParams): Promise<CreateUserResult> {
+  // Refresh session to ensure JWT is valid before calling edge function
+  await supabase.auth.refreshSession();
+
   const { data, error } = await supabase.functions.invoke('invite-user', {
     body: params,
   });
