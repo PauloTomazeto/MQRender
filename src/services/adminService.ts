@@ -557,9 +557,9 @@ export async function getCreditTransactions(userId?: string, limit = 50): Promis
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
-// ─── Invite User ──────────────────────────────────────────────────────────────
+// ─── Create User ──────────────────────────────────────────────────────────────
 
-export interface InviteUserParams {
+export interface CreateUserParams {
   email: string;
   name: string;
   plan: 'basic' | 'premium' | 'enterprise';
@@ -567,11 +567,11 @@ export interface InviteUserParams {
   addon_credits: number;
 }
 
-export interface InviteUserResult {
+export interface CreateUserResult {
   success: boolean;
   user_id?: string;
   message?: string;
-  password_link?: string;
+  temp_password?: string;
   credits_allocated?: {
     plan: number;
     addon: number;
@@ -580,24 +580,17 @@ export interface InviteUserResult {
   error?: string;
 }
 
-export async function inviteUser(params: InviteUserParams): Promise<InviteUserResult> {
+export async function createUser(params: CreateUserParams): Promise<CreateUserResult> {
   const { data, error } = await supabase.functions.invoke('invite-user', {
     body: params,
   });
 
   if (error) {
-    // FunctionsHttpError carries the parsed response body in .context
     const body = (error as any)?.context ?? {};
     const errMsg =
-      body?.error || body?.message || body?.details || error.message || 'Falha ao convidar usuário';
-    console.error('[inviteUser] Edge Function error:', error, body);
+      body?.error || body?.message || body?.details || error.message || 'Falha ao criar usuário';
+    console.error('[createUser] Edge Function error:', error, body);
     return { success: false, error: errMsg };
-  }
-
-  // Transform raw Supabase recovery URL into branded access link
-  if (data?.password_link) {
-    const encoded = btoa(data.password_link);
-    data.password_link = `https://renderianapratica.com.br/acesso?t=${encoded}`;
   }
 
   return data;

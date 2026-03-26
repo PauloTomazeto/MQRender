@@ -6,15 +6,14 @@ import { Header } from './components/Header';
 import { Studio } from './components/Studio';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ResetPassword } from './components/ResetPassword';
-import { AcessoRelay } from './components/AcessoRelay';
-import { AcceptInvite } from './components/AcceptInvite';
+import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useAuth, signOut } from './lib/useAuth';
 import { getUserCreditStatus, type CreditStatus } from './services/creditService';
 
 type View = 'studio' | 'admin' | 'subscription';
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, mustChangePassword, profileName, clearMustChangePassword } = useAuth();
   const [view, setView] = useState<View>('studio');
   const [credits, setCredits] = useState<CreditStatus | null>(null);
 
@@ -52,16 +51,6 @@ export default function App() {
     );
   }
 
-  // Detect /acesso relay (branded access link from admin)
-  if (window.location.pathname === '/acesso') {
-    return <AcessoRelay />;
-  }
-
-  // Detect /accept-invite (new user creates password)
-  if (window.location.pathname === '/accept-invite') {
-    return <AcceptInvite onSuccess={() => {}} />;
-  }
-
   // Detect password reset flow from URL (hash or query param from Supabase)
   const hash = window.location.hash;
   const search = window.location.search;
@@ -88,6 +77,17 @@ export default function App() {
   // Não autenticado
   if (!user) {
     return <AuthGate onSuccess={() => {}} />;
+  }
+
+  // Primeiro acesso: forçar troca de senha antes de entrar no app
+  if (mustChangePassword) {
+    return (
+      <ForcePasswordChange
+        userEmail={user.email ?? ''}
+        userName={profileName ?? user.email?.split('@')[0] ?? ''}
+        onSuccess={clearMustChangePassword}
+      />
+    );
   }
 
   // Painel admin

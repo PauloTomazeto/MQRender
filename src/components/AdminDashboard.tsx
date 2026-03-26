@@ -70,7 +70,7 @@ import {
   adminAdjustUserCredits,
   adminAddAddonToUser,
   getCreditTransactions,
-  inviteUser,
+  createUser,
   deleteUser,
   type AdminUser,
   type AdminLog,
@@ -80,7 +80,7 @@ import {
   type RecentActivityItem,
   type UserCreditInfo,
   type CreditConfigRow,
-  type InviteUserParams,
+  type CreateUserParams,
 } from '../services/adminService';
 import { getUserCreditStatus, type CreditStatus } from '../services/creditService';
 
@@ -1001,7 +1001,7 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
 }
 
 function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: () => void }) {
-  const [form, setForm] = useState<InviteUserParams>({
+  const [form, setForm] = useState<CreateUserParams>({
     name: '',
     email: '',
     plan: 'basic',
@@ -1010,25 +1010,29 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: 
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [passwordLink, setPasswordLink] = useState<string | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const planCredits = form.plan === 'basic' ? 1000 : form.plan === 'premium' ? 2000 : 5000;
   const totalCredits = planCredits + form.addon_credits;
+
+  // Live preview of temp password as admin types the name
+  const firstName = form.name.trim().split(/\s+/)[0] ?? '';
+  const tempPasswordPreview = firstName ? `${firstName}2026` : null;
 
   const handleSubmit = async () => {
     if (!form.name.trim() || !form.email.trim()) return;
     setLoading(true);
     setResult(null);
     try {
-      const res = await inviteUser(form);
+      const res = await createUser(form);
       if (res.success) {
-        setPasswordLink(res.password_link ?? null);
+        setTempPassword(res.temp_password ?? null);
         setResult({ success: true, message: res.message || 'Usuário criado com sucesso!' });
         setForm({ name: '', email: '', plan: 'basic', role: 'user', addon_credits: 0 });
         onSuccess?.();
       } else {
-        setResult({ success: false, message: res.error || 'Erro ao enviar convite' });
+        setResult({ success: false, message: res.error || 'Erro ao criar usuário' });
       }
     } catch {
       setResult({ success: false, message: 'Erro inesperado. Tente novamente.' });
@@ -1061,9 +1065,7 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: 
               <h2 className="font-display font-bold text-xl text-bluegray leading-none">
                 Cadastrar Novo Usuário
               </h2>
-              <p className="text-[10px] text-bluegray/40 mt-0.5">
-                Gera link de acesso para o usuário
-              </p>
+              <p className="text-[10px] text-bluegray/40 mt-0.5">Cria conta com senha provisória</p>
             </div>
           </div>
           <button
@@ -1078,15 +1080,23 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: 
           {/* Nome */}
           <div>
             <label className="text-[9px] font-black uppercase tracking-widest text-bluegray/40 ml-1 mb-1.5 block">
-              Nome Completo
+              Nome do Usuário
             </label>
             <input
               type="text"
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="Nome do usuário"
+              placeholder="Nome completo"
               className="w-full px-4 py-3 rounded-2xl bg-offwhite border border-black/5 text-sm text-bluegray outline-none focus:ring-2 focus:ring-gold/20 placeholder:text-bluegray/30"
             />
+            {tempPasswordPreview && (
+              <p className="text-[10px] text-bluegray/40 mt-1.5 ml-1">
+                Senha provisória:{' '}
+                <span className="font-mono font-semibold text-amber-600">
+                  {tempPasswordPreview}
+                </span>
+              </p>
+            )}
           </div>
 
           {/* Email */}
@@ -1199,25 +1209,25 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: 
             </div>
           )}
 
-          {/* Password link panel */}
-          {result?.success && passwordLink && (
+          {/* Temp password panel */}
+          {result?.success && tempPassword && (
             <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                  Link de acesso gerado
+                  Senha Provisória Gerada
                 </p>
               </div>
               <p className="text-xs text-amber-700/70">
-                Compartilhe este link com o usuário via WhatsApp ou outro canal. Expira em 24h.
+                Compartilhe com o usuário. No primeiro acesso ele será obrigado a trocar a senha.
               </p>
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800 font-mono truncate">
-                  {passwordLink}
+                <div className="flex-1 bg-white border border-amber-200 rounded-xl px-3 py-2 text-sm text-amber-800 font-mono font-bold tracking-wider">
+                  {tempPassword}
                 </div>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(passwordLink);
+                    navigator.clipboard.writeText(tempPassword);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
@@ -1227,6 +1237,9 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: 
                   {copied ? 'Copiado!' : 'Copiar'}
                 </button>
               </div>
+              <p className="text-[10px] text-amber-600/70 font-semibold">
+                Esta senha é exibida apenas uma vez.
+              </p>
             </div>
           )}
 
@@ -1250,7 +1263,7 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess?: 
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" /> Cadastrar Usuário
+                  <Send className="w-4 h-4" /> Criar Usuário
                 </>
               )}
             </Button>

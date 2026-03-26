@@ -76,14 +76,21 @@ serve(async (req) => {
       })
     }
 
-    // Step 1: Create user account (no email sent)
+    // Generate temporary password: FirstName + "2026"
+    const firstName = name.trim().split(/\s+/)[0]
+    const tempPassword = `${firstName}2026`
+
+    // Step 1: Create user with temporary password
+    // created_by_admin=true signals the DB trigger to set must_change_password=true
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
+      password: tempPassword,
       email_confirm: true,
       user_metadata: {
         name,
         role: role || 'user',
         subscription_tier: plan,
+        created_by_admin: true,
       },
     })
 
@@ -96,49 +103,7 @@ serve(async (req) => {
 
     const newUserId = userData.user.id
 
-    // Step 2: Generate invite link with proper type
-    // This sends an email automatically to the user with the invite link
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: {
-        redirectTo: `${Deno.env.get('SITE_URL') ?? 'https://renderianapratica.com.br'}/accept-invite`,
-      },
-    })
-
-    if (linkError) {
-      console.error('generateLink error:', linkError)
-      return new Response(JSON.stringify({ error: 'Falha ao gerar link de convite: ' + linkError.message }), {
-        status: 500, headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' }
-      })
-    }
-
-    const inviteLink = linkData?.properties?.action_link ?? null
-    const inviteToken = inviteLink ? new URL(inviteLink).searchParams.get('token') : null
-
-    // Step 2b: Save invite record for tracking
-    const expiresAt = new Date()
-    expiresAt.setHours(expiresAt.getHours() + 24) // 24 hours expiry
-
-    const { error: inviteRecordError } = await supabaseAdmin
-      .from('user_invites')
-      .insert({
-        email,
-        token: inviteToken ?? `manual-${newUserId}`,
-        invited_by: caller.id,
-        target_plan: plan,
-        target_role: role || 'user',
-        expires_at: expiresAt.toISOString(),
-      })
-
-    if (inviteRecordError) {
-      console.error('Invite record error:', inviteRecordError)
-      // Don't fail the whole operation if this fails
-    }
-
-    // Step 2: Update profile with name, role, and subscription_tier
-    // (the trigger on_auth_user_created may have already created the profile)
-    // Wait a moment for trigger to fire
+    // Step 2: Wait for trigger to fire then upsert profile as safety net
     await new Promise(resolve => setTimeout(resolve, 500))
 
     const { error: profileError } = await supabaseAdmin
@@ -150,6 +115,7 @@ serve(async (req) => {
         role: role || 'user',
         subscription_tier: plan,
         status: 'active',
+        must_change_password: true,
       }, { onConflict: 'id' })
 
     if (profileError) {
@@ -157,7 +123,6 @@ serve(async (req) => {
     }
 
     // Step 3: Get the plan_id for the selected plan
-    // Fallback credits in case DB query fails due to permission issues
     const PLAN_CREDITS: Record<string, number> = { basic: 1000, premium: 2000, enterprise: 5000 }
 
     const { data: planData, error: planError } = await supabaseAdmin
@@ -173,10 +138,9 @@ serve(async (req) => {
       })
     }
 
-    // Use DB value or fallback
     const planCredits = planData.credits_monthly ?? PLAN_CREDITS[plan] ?? 1000
 
-    // Step 4: Create subscription (triggers on_subscription_activated → reset_user_credits)
+    // Step 4: Create subscription
     const now = new Date()
     const cycleEnd = new Date(now)
     cycleEnd.setMonth(cycleEnd.getMonth() + 1)
@@ -214,7 +178,7 @@ serve(async (req) => {
       .from('admin_logs')
       .insert({
         admin_id: caller.id,
-        action: 'invite_user',
+        action: 'create_user_with_temp_password',
         target_user_id: newUserId,
         details: {
           email,
@@ -230,9 +194,8 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         user_id: newUserId,
-        invite_link: inviteLink,
-        invite_token: inviteToken,
-        message: `Usuário ${email} criado com sucesso. Email de convite enviado automaticamente.`,
+        temp_password: tempPassword,
+        message: `Usuário ${email} criado com sucesso. Senha provisória: ${tempPassword}`,
         credits_allocated: {
           plan: planCredits,
           addon: addon_credits || 0,
