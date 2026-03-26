@@ -228,28 +228,31 @@ export async function getRecentActivity(): Promise<RecentActivityItem[]> {
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export async function getAllUsers(): Promise<AdminUser[]> {
-  const { data, error } = await supabase
+  const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
     .select(
-      `
-      id, name, email, role, status, subscription_tier,
-      image_quota_monthly, current_month_usage, created_at, last_login,
-      subscriptions (
-        status,
-        subscription_plans ( display_name, price_monthly )
-      )
-    `
+      'id, name, email, role, status, subscription_tier, image_quota_monthly, current_month_usage, created_at, last_login'
     )
     .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('[adminService] getAllUsers error:', error);
+  if (profilesError) {
+    console.error('[adminService] getAllUsers profiles error:', profilesError);
     return [];
   }
-  if (!data) return [];
+  if (!profiles || profiles.length === 0) return [];
 
-  return data.map((p: any) => {
-    const sub = p.subscriptions?.[0];
+  const userIds = profiles.map((p: any) => p.id);
+
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('user_id, status, plan_id, subscription_plans ( display_name, price_monthly )')
+    .in('user_id', userIds)
+    .eq('status', 'active');
+
+  const subMap = new Map((subs ?? []).map((s: any) => [s.user_id, s]));
+
+  return profiles.map((p: any) => {
+    const sub = subMap.get(p.id);
     const plan = sub?.subscription_plans;
     return {
       id: p.id,
