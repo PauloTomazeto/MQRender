@@ -219,6 +219,28 @@ export interface ScanContext {
   image_quality: string | null;
 }
 
+export interface ScanOpening {
+  id: string;
+  scan_id: string;
+  tipo: string;
+  proporcao: string | null;
+  posicao_fachada: string | null;
+  ritmo: string | null;
+  perfil_visivel: string | null;
+  vidro_tipo: string | null;
+  sistema_brise: string | null;
+  recuo_em_relacao_fachada: string | null;
+}
+
+export interface FloorPlanEnvironment {
+  id: number;
+  scan_id: string;
+  nome: string;
+  area_m2: number | null;
+  tipo: string | null;
+  posicao: string | null;
+}
+
 export interface PromptConfig {
   id: string;
   session_id: string;
@@ -240,6 +262,25 @@ export interface PromptConfig {
   material_fidelity: boolean;
   season: SeasonType;
   created_at: string;
+}
+
+export interface LightPointConfig {
+  id: string;
+  prompt_config_id: string;
+  enabled: boolean;
+  type: string;
+  intensity: number;
+  temperature: number;
+  location: string;
+}
+
+export interface MirrorConfig {
+  id: string;
+  prompt_config_id: string;
+  enabled: boolean;
+  location: string;
+  reflection_image_path: string | null;
+  reflection_description: string | null;
 }
 
 export interface PromptOutput {
@@ -460,10 +501,30 @@ export interface Database {
         Insert: Omit<ScanContext, 'id'>;
         Update: Partial<ScanContext>;
       };
+      scan_openings: {
+        Row: ScanOpening;
+        Insert: Omit<ScanOpening, 'id'>;
+        Update: Partial<ScanOpening>;
+      };
+      floor_plan_environments: {
+        Row: FloorPlanEnvironment;
+        Insert: FloorPlanEnvironment;
+        Update: Partial<FloorPlanEnvironment>;
+      };
       prompt_configs: {
         Row: PromptConfig;
         Insert: Omit<PromptConfig, 'id' | 'created_at'>;
         Update: Partial<PromptConfig>;
+      };
+      light_point_configs: {
+        Row: LightPointConfig;
+        Insert: LightPointConfig;
+        Update: Partial<LightPointConfig>;
+      };
+      mirror_configs: {
+        Row: MirrorConfig;
+        Insert: Omit<MirrorConfig, 'id'>;
+        Update: Partial<MirrorConfig>;
       };
       prompt_outputs: {
         Row: PromptOutput;

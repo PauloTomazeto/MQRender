@@ -12,6 +12,14 @@ export interface CreditStatus {
   credits_reset_at: string | null;
 }
 
+/** Internal type for the profile credit columns returned from the database */
+interface ProfileCreditRow {
+  credits_plan: number;
+  credits_addon: number;
+  credits_used: number;
+  credits_reset_at: string | null;
+}
+
 /** Returns the credit status for the given user (or the current authenticated user). */
 export async function getUserCreditStatus(userId?: string): Promise<CreditStatus> {
   let uid = userId;
@@ -29,7 +37,7 @@ export async function getUserCreditStatus(userId?: string): Promise<CreditStatus
 
   if (error || !data) throw new Error(`getUserCreditStatus: ${error?.message}`);
 
-  const p = data as any;
+  const p = data as ProfileCreditRow;
   return {
     credits_plan: p.credits_plan ?? 0,
     credits_addon: p.credits_addon ?? 0,

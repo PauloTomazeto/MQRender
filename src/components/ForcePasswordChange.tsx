@@ -61,7 +61,15 @@ export function ForcePasswordChange({ userEmail, userName, onSuccess }: ForcePas
         onSuccess();
       }, 1500);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao atualizar senha. Tente novamente.');
+      let errorMessage = 'Erro ao atualizar senha. Tente novamente.';
+      if (err instanceof Error) {
+        if (err.message.includes('New password should be different')) {
+          errorMessage = 'A nova senha deve ser diferente da senha atual. Escolha outra senha.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

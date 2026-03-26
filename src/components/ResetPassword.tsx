@@ -49,7 +49,15 @@ export function ResetPassword() {
         window.location.href = '/';
       }, 3000);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao definir senha.');
+      let errorMessage = 'Erro ao definir senha.';
+      if (err instanceof Error) {
+        if (err.message.includes('New password should be different')) {
+          errorMessage = 'A nova senha deve ser diferente da senha atual. Escolha outra senha.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
