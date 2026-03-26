@@ -59,27 +59,67 @@ serve(async (req) => {
     }
 
     // Check if caller is admin via profiles table (most reliable source)
-    const { data: callerProfile } = await supabaseAdmin
+    const { data: callerProfile, error: profileQueryError } = await supabaseAdmin
       .from('profiles')
       .select('role')
       .eq('id', caller.id)
       .single()
 
+    if (profileQueryError) {
+      console.error('[invite-user] Failed to fetch caller profile:', {
+        userId: caller.id,
+        error: profileQueryError.message,
+        code: profileQueryError.code,
+      })
+      // Fall back to app_metadata for admin check if profile query fails
+    }
+
     const isAdmin = callerProfile?.role === 'admin' || caller.app_metadata?.role === 'admin'
 
     if (!isAdmin) {
-      return new Response(JSON.stringify({ error: 'Forbidden: admin access required' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      return new Response(
+        JSON.stringify({
+          error: 'Forbidden: admin access required',
+          details: 'User must have admin role to create users',
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Parse request body
     const { email, name, plan, role, addon_credits } = await req.json()
 
+    // Validate required fields
     if (!email || !name || !plan) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: email, name, plan' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: email, name, plan' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid email format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate name length
+    if (name.trim().length < 2 || name.trim().length > 100) {
+      return new Response(
+        JSON.stringify({ error: 'Name must be between 2 and 100 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate addon_credits
+    if (addon_credits && (addon_credits < 0 || !Number.isInteger(addon_credits))) {
+      return new Response(
+        JSON.stringify({ error: 'Addon credits must be a non-negative integer' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Step 1: Validate plan exists BEFORE creating user to avoid partial state
@@ -130,18 +170,34 @@ serve(async (req) => {
     // Step 3: Upsert profile as safety net (handle_new_user trigger already fired synchronously)
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .upsert({
-        id: newUserId,
-        email,
-        name,
-        role: role || 'user',
-        subscription_tier: plan,
-        status: 'active',
-        must_change_password: true,
-      }, { onConflict: 'id' })
+      .upsert(
+        {
+          id: newUserId,
+          email,
+          name,
+          role: role || 'user',
+          subscription_tier: plan,
+          status: 'active',
+          must_change_password: true,
+        },
+        { onConflict: 'id' }
+      )
 
     if (profileError) {
-      console.error('Profile upsert error:', profileError)
+      console.error('[invite-user] Profile upsert error:', {
+        userId: newUserId,
+        email,
+        error: profileError.message,
+        code: profileError.code,
+      })
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to create user profile',
+          details: profileError.message,
+          code: profileError.code,
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Step 4: Create subscription
@@ -161,24 +217,52 @@ serve(async (req) => {
       })
 
     if (subError) {
-      console.error('Subscription insert error:', subError)
+      console.error('[invite-user] Subscription insert error:', {
+        userId: newUserId,
+        planId: planData.id,
+        error: subError.message,
+        code: subError.code,
+      })
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to create subscription',
+          details: subError.message,
+          code: subError.code,
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Step 5: Add addon credits if requested
     if (addon_credits && addon_credits > 0) {
       const packCount = Math.floor(addon_credits / 1000)
+      let successfulPacks = 0
+      let failedPacks = 0
+
       for (let i = 0; i < packCount; i++) {
         const { error: addonError } = await supabaseAdmin.rpc('add_addon_credits', {
           p_user_id: newUserId,
         })
         if (addonError) {
-          console.error('Addon credits error:', addonError)
+          console.error(`[invite-user] Addon credits pack ${i + 1}/${packCount} error:`, {
+            userId: newUserId,
+            pack: i + 1,
+            error: addonError.message,
+            code: addonError.code,
+          })
+          failedPacks++
+        } else {
+          successfulPacks++
         }
+      }
+
+      if (failedPacks > 0) {
+        console.warn(`[invite-user] Addon credits: ${successfulPacks} succeeded, ${failedPacks} failed`)
       }
     }
 
     // Step 6: Log admin action
-    await supabaseAdmin
+    const { error: logError } = await supabaseAdmin
       .from('admin_logs')
       .insert({
         admin_id: caller.id,
@@ -193,6 +277,16 @@ serve(async (req) => {
           plan_credits: planCredits,
         },
       })
+
+    if (logError) {
+      console.error('[invite-user] Admin log insertion error:', {
+        adminId: caller.id,
+        userId: newUserId,
+        error: logError.message,
+        code: logError.code,
+      })
+      // Don't fail the operation if logging fails, but ensure it's logged
+    }
 
     return new Response(
       JSON.stringify({
