@@ -75,24 +75,17 @@ serve(async (req) => {
       })
     }
 
-    // Get target user info for logging
+    // Get target user info for logging (while profile still exists)
     const { data: targetProfile } = await supabaseAdmin
       .from('profiles')
       .select('email, name')
       .eq('id', user_id)
       .single()
 
-    // Delete from auth.users — cascades to profiles and all related data
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id)
-
-    if (deleteError) {
-      return new Response(JSON.stringify({ error: deleteError.message }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    // Log admin action
-    await supabaseAdmin
+    // Log BEFORE deleting — admin_logs.target_user_id is a FK to profiles(id)
+    // which gets cascade-deleted when auth.users is deleted. Inserting before
+    // deletion ensures the FK constraint is satisfied.
+    const { error: logError } = await supabaseAdmin
       .from('admin_logs')
       .insert({
         admin_id: caller.id,
@@ -103,6 +96,19 @@ serve(async (req) => {
           name: targetProfile?.name,
         },
       })
+
+    if (logError) {
+      console.error('admin_logs insert error:', logError.message)
+    }
+
+    // Delete from auth.users — cascades to profiles and all related data
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id)
+
+    if (deleteError) {
+      return new Response(JSON.stringify({ error: deleteError.message }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
     return new Response(
       JSON.stringify({ success: true, message: `Usuário excluído com sucesso` }),

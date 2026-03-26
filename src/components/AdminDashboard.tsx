@@ -845,7 +845,7 @@ function UsersTab() {
             user={selected}
             onClose={() => {
               setSelected(null);
-              reload();
+              setTimeout(() => reload(), 500);
             }}
           />
         )}
@@ -872,13 +872,20 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
   };
 
   const handleDelete = async () => {
+    if (deleting) return;
     setDeleting(true);
     setDeleteError(null);
-    const res = await deleteUser(user.id);
-    if (res.success) {
-      onClose();
-    } else {
-      setDeleteError(res.error ?? 'Erro ao excluir usuário');
+    try {
+      const res = await deleteUser(user.id);
+      if (res.success) {
+        onClose();
+      } else {
+        setDeleteError(res.error ?? 'Erro ao excluir usuário');
+        setDeleting(false);
+        setConfirmDelete(false);
+      }
+    } catch {
+      setDeleteError('Erro inesperado ao excluir. Tente novamente.');
       setDeleting(false);
       setConfirmDelete(false);
     }
