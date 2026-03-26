@@ -581,45 +581,26 @@ export interface InviteUserResult {
 }
 
 export async function inviteUser(params: InviteUserParams): Promise<InviteUserResult> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
-
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const response = await fetch(`${supabaseUrl}/functions/v1/invite-user`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify(params),
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: params,
   });
 
-  let result: any;
-  try {
-    result = await response.json();
-  } catch {
-    return {
-      success: false,
-      error: `Erro HTTP ${response.status}: resposta inválida do servidor.`,
-    };
-  }
-
-  if (!response.ok) {
+  if (error) {
+    // FunctionsHttpError carries the parsed response body in .context
+    const body = (error as any)?.context ?? {};
     const errMsg =
-      result?.error || result?.message || result?.details || `Erro HTTP ${response.status}`;
-    console.error('[inviteUser] Edge Function error:', response.status, result);
+      body?.error || body?.message || body?.details || error.message || 'Falha ao convidar usuário';
+    console.error('[inviteUser] Edge Function error:', error, body);
     return { success: false, error: errMsg };
   }
 
   // Transform raw Supabase recovery URL into branded access link
-  if (result.password_link) {
-    const encoded = btoa(result.password_link);
-    result.password_link = `https://renderianapratica.com.br/acesso?t=${encoded}`;
+  if (data?.password_link) {
+    const encoded = btoa(data.password_link);
+    data.password_link = `https://renderianapratica.com.br/acesso?t=${encoded}`;
   }
 
-  return result;
+  return data;
 }
 
 export async function getReportKPIs() {
