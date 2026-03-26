@@ -106,10 +106,17 @@ serve(async (req) => {
       )
     }
 
-    // Validate name length
-    if (name.trim().length < 2 || name.trim().length > 100) {
+    // Validate name length (must have at least 2 characters and max 100)
+    const trimmedName = name.trim()
+    if (trimmedName.length < 2) {
       return new Response(
-        JSON.stringify({ error: 'Name must be between 2 and 100 characters' }),
+        JSON.stringify({ error: 'Name must have at least 2 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    if (trimmedName.length > 100) {
+      return new Response(
+        JSON.stringify({ error: 'Name must not exceed 100 characters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
