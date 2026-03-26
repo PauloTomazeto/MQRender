@@ -298,7 +298,10 @@ export async function updateUserPlan(userId: string, planName: string): Promise<
 }
 
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
-  await supabase.auth.refreshSession();
+  const { error: sessionError } = await supabase.auth.refreshSession();
+  if (sessionError) {
+    return { success: false, error: 'Sessão expirada. Faça login novamente.' };
+  }
 
   const { data, error } = await supabase.functions.invoke('delete-user', {
     body: { user_id: userId },
@@ -604,8 +607,10 @@ export interface CreateUserResult {
 }
 
 export async function createUser(params: CreateUserParams): Promise<CreateUserResult> {
-  // Refresh session to ensure JWT is valid before calling edge function
-  await supabase.auth.refreshSession();
+  const { error: sessionError } = await supabase.auth.refreshSession();
+  if (sessionError) {
+    return { success: false, error: 'Sessão expirada. Faça login novamente.' };
+  }
 
   const { data, error } = await supabase.functions.invoke('invite-user', {
     body: params,
