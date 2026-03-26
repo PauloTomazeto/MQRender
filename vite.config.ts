@@ -10,6 +10,9 @@ export default defineConfig(({mode}) => {
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.KIE_API_KEY': JSON.stringify(env.KIE_API_KEY),
+      // Ensure Supabase env vars are loaded via import.meta.env
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
     },
     resolve: {
       alias: {
