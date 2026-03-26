@@ -1,0 +1,10 @@
+project_id = "vfldjkyofziplbjhrgjr"
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.accept-invite]
+verify_jwt = false

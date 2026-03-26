@@ -27,6 +27,7 @@ serve(async (req) => {
     // Verify caller is authenticated using a normal client with the auth header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
+      console.log('No auth header present');
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -41,6 +42,7 @@ serve(async (req) => {
     const { data: { user: caller }, error: authError } = await supabaseAuthClient.auth.getUser()
 
     if (authError || !caller) {
+      console.error('Auth error in Edge Function:', authError, 'caller:', caller);
       return new Response(JSON.stringify({ error: authError?.message || 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
