@@ -48,6 +48,14 @@ export function ForcePasswordChange({ userEmail, userName, onSuccess }: ForcePas
 
       onSuccess();
     } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes('different from the old password')) {
+        // A senha já é igual à digitada. Provavelmente o usuário ficou preso no bug anterior.
+        // Vamos apenas limpar a flag e liberar o acesso.
+        await supabase.rpc('clear_must_change_password');
+        onSuccess();
+        return;
+      }
+
       let errorMessage = 'Erro ao atualizar senha. Tente novamente.';
       if (err instanceof Error) {
         if (err.message.includes('New password should be different')) {
